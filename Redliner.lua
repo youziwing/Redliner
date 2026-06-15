@@ -1,8 +1,3 @@
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 local pcall = pcall
 local tick = tick
 local task_wait = task.wait
@@ -25,14 +20,12 @@ local Vector2_new = Vector2.new
 local Color3_fromRGB = Color3.fromRGB
 local Drawing_new = Drawing.new
 
--- ==================== CONFIG ====================
 local CONFIG = {
     AURA_RANGE = 22.5,
     AURA_ANGLE = 180,
     AUTO_ATTACK = true,
     ATTACK_COOLDOWN = 0.15,
     TARGET_MODE = "closest",
-
     LookAngleThreshold = 35,
     MinTriggerDistance = 8,
     MaxTriggerDistance = 250,
@@ -40,30 +33,23 @@ local CONFIG = {
     ParryCooldown = 0.5,
     EntitiesFolderName = "Entities",
     HeadName = "Head",
-
-    ESP_INTERVAL = 0.05,
+    ESP_INTERVAL = 0.016,
     AURA_INTERVAL = 0.033,
-    PARRY_INTERVAL = 0.1,
 }
 
--- ==================== STATE ====================
 local STATE = {
     enabled = false,
     lastAttack = 0,
     currentTarget = nil,
     targetsInRange = {},
     lastAuraUpdate = 0,
-
     parryEnabled = true,
     parryCooldownUntil = 0,
     parryPending = false,
     monarchWasPresent = false,
-    lastParryUpdate = 0,
-
     lastESPUpdate = 0,
 }
 
--- ==================== BLOCKED NAMES ====================
 local BLOCKED_PATTERNS = {
     "emptydummy",
     "emptymodel",
@@ -82,18 +68,27 @@ local function isBlockedName(name)
     return false
 end
 
--- ==================== LOCAL PLAYER ====================
-local LocalPlayer = Players.LocalPlayer
+local LocalPlayer = nil
 local myChar = nil
 local myRoot = nil
 local myPos = nil
-local CONFIG_SelfName = LocalPlayer and LocalPlayer.Name or nil
+local CONFIG_SelfName = nil
+
+local function fetchLocalPlayer()
+    if LocalPlayer then return true end
+    local ok, svc = pcall(function() return game:GetService("Players") end)
+    if not ok or not svc then return false end
+    local ok2, lp = pcall(function() return svc.LocalPlayer end)
+    if ok2 and lp then
+        LocalPlayer = lp
+        CONFIG_SelfName = lp.Name
+        return true
+    end
+    return false
+end
 
 local function updateLocalPlayerCache()
-    if not LocalPlayer then
-        LocalPlayer = Players.LocalPlayer
-        if not LocalPlayer then return false end
-    end
+    if not fetchLocalPlayer() then return false end
     myChar = LocalPlayer.Character
     if not myChar then return false end
     myRoot = myChar:FindFirstChild("HumanoidRootPart")
@@ -120,7 +115,6 @@ local function isSelf(target)
     return ok and name == CONFIG_SelfName
 end
 
--- ==================== SAFE UTILITIES ====================
 local function safeFindFirstChild(parent, name)
     if not parent then return nil end
     local ok, child = pcall(function() return parent:FindFirstChild(name) end)
@@ -163,31 +157,20 @@ local function safeGetName(instance)
     return "?"
 end
 
--- ==================== HEALTH & POSTURE (DIRECT + CACHED) ====================
--- Deepwoken stores health/posture in player.ReadOnly folder as Value objects
--- We try direct read first, fallback to Humanoid
-
-local healthCache = {} -- [player] = { readOnly=folder, healthVal=obj, maxVal=obj, impactVal=obj, lastBuild=time }
+local healthCache = {}
 
 local function buildHealthCache(player)
     local cache = { readOnly = nil, healthVal = nil, maxVal = nil, impactVal = nil, lastBuild = tick() }
-
-    -- ReadOnly is a child of the Player object, not Character
     local ok, ro = pcall(function() return player:FindFirstChild("ReadOnly") end)
     if ok and ro then
         cache.readOnly = ro
-        -- Try to find health value object
         local ok2, hv = pcall(function() return ro:FindFirstChild("health") end)
         if ok2 and hv then cache.healthVal = hv end
-
-        -- Try maxhealth variants
         local maxNames = {"maxhealth", "maxHealth", "MaxHealth", "HealthMax"}
         for _, n in ipairs(maxNames) do
             local ok3, mv = pcall(function() return ro:FindFirstChild(n) end)
             if ok3 and mv then cache.maxVal = mv break end
         end
-
-        -- Impact / posture
         local ok4, iv = pcall(function() return ro:FindFirstChild("impact") end)
         if ok4 and iv then cache.impactVal = iv end
         if not cache.impactVal then
@@ -198,7 +181,6 @@ local function buildHealthCache(player)
             end
         end
     end
-
     healthCache[player] = cache
     return cache
 end
@@ -206,7 +188,6 @@ end
 local function getHealthCache(player)
     local cache = healthCache[player]
     local now = tick()
-    -- Rebuild cache every 2 seconds or if missing
     if not cache or (now - cache.lastBuild > 2) then
         cache = buildHealthCache(player)
     end
@@ -215,14 +196,10 @@ end
 
 local function getHealth(player)
     local cache = getHealthCache(player)
-
-    -- Try ReadOnly.health first (Deepwoken native)
     if cache.healthVal then
         local ok, val = pcall(function() return cache.healthVal.Value end)
         if ok and val ~= nil then return val end
     end
-
-    -- Fallback to Humanoid.Health
     local ok, char = pcall(function() return player.Character end)
     if ok and char then
         local ok2, hum = pcall(function() return char:FindFirstChildOfClass("Humanoid") end)
@@ -231,18 +208,15 @@ local function getHealth(player)
             if ok3 and h ~= nil then return h end
         end
     end
-
     return nil
 end
 
 local function getMaxHealth(player)
     local cache = getHealthCache(player)
-
     if cache.maxVal then
         local ok, val = pcall(function() return cache.maxVal.Value end)
         if ok and val ~= nil then return val end
     end
-
     local ok, char = pcall(function() return player.Character end)
     if ok and char then
         local ok2, hum = pcall(function() return char:FindFirstChildOfClass("Humanoid") end)
@@ -251,22 +225,17 @@ local function getMaxHealth(player)
             if ok3 and m ~= nil then return m end
         end
     end
-
     return nil
 end
 
 local function getPosture(player)
     local cache = getHealthCache(player)
-
     if cache.impactVal then
         local ok, val = pcall(function() return cache.impactVal.Value end)
         if ok and val ~= nil then return val end
     end
-
-    -- Direct scan as last resort
     local ok, readOnly = pcall(function() return player:FindFirstChild("ReadOnly") end)
     if not ok or not readOnly then return nil end
-
     local altNames = {"impact", "Impact", "posture", "Posture", "stun", "Stun"}
     for _, name in ipairs(altNames) do
         local ok3, val = pcall(function()
@@ -275,11 +244,9 @@ local function getPosture(player)
         end)
         if ok3 and val ~= nil then return val end
     end
-
     return nil
 end
 
--- ==================== MATH HELPERS ====================
 local function distanceSq(posA, posB)
     if not posA or not posB then return math_huge end
     local dx = posB.X - posA.X
@@ -300,7 +267,6 @@ local function angleBetween(v1, v2)
     return math_deg(rad)
 end
 
--- ==================== AURA SYSTEM (THROTTLED) ====================
 local cachedTargets = {}
 local lastTargetScan = 0
 local TARGET_SCAN_INTERVAL = 0.1
@@ -308,10 +274,8 @@ local TARGET_SCAN_INTERVAL = 0.1
 local function scanTargets()
     local targets = {}
     if not updateLocalPlayerCache() then return targets end
-
     local rangeSq = CONFIG.AURA_RANGE * CONFIG.AURA_RANGE
-    local allPlayers = Players:GetPlayers()
-
+    local allPlayers = game:GetService("Players"):GetPlayers()
     for i = 1, #allPlayers do
         local player = allPlayers[i]
         if player ~= LocalPlayer and player.Name ~= LocalPlayer.Name and not isBlockedName(player.Name) then
@@ -349,7 +313,6 @@ local function scanTargets()
             end
         end
     end
-
     return targets
 end
 
@@ -374,14 +337,11 @@ end
 
 local function updateAura()
     if not STATE.enabled then return end
-
     local now = tick()
     if now - STATE.lastAuraUpdate < CONFIG.AURA_INTERVAL then return end
     STATE.lastAuraUpdate = now
-
     local targets = getAllTargets()
     STATE.targetsInRange = targets
-
     if #targets > 0 then
         STATE.currentTarget = targets[1]
         if CONFIG.AUTO_ATTACK then
@@ -392,7 +352,6 @@ local function updateAura()
     end
 end
 
--- ==================== ESP SYSTEM (THROTTLED + CACHED) ====================
 local espObjects = {}
 
 local function healthColor(pct)
@@ -408,7 +367,6 @@ end
 local function createESP(player)
     if player == LocalPlayer or player.Name == LocalPlayer.Name or isBlockedName(player.Name) then return end
     if espObjects[player] then return end
-
     local hpText = Drawing_new("Text")
     hpText.Size = 13
     hpText.Font = Drawing.Fonts.System
@@ -416,7 +374,6 @@ local function createESP(player)
     hpText.Center = true
     hpText.Visible = false
     hpText.ZIndex = 3
-
     local postureText = Drawing_new("Text")
     postureText.Size = 13
     postureText.Font = Drawing.Fonts.System
@@ -425,7 +382,6 @@ local function createESP(player)
     postureText.Color = Color3_fromRGB(80, 150, 255)
     postureText.Visible = false
     postureText.ZIndex = 3
-
     espObjects[player] = {
         player = player,
         hpText = hpText,
@@ -436,26 +392,21 @@ local function createESP(player)
         lastHealth = nil,
         lastPosture = nil,
         lastPos = nil,
-        -- Cached part references
-        refs = {
-            head = nil,
-            humanoid = nil,
-            root = nil,
-        },
+        lastPosturePos = nil,
+        refs = { head = nil, humanoid = nil, root = nil },
     }
 end
 
 local function removeESP(player)
     local data = espObjects[player]
     if data then
-        data.hpText:Remove()
-        data.postureText:Remove()
+        pcall(function() if data.hpText then data.hpText:Remove() end end)
+        pcall(function() if data.postureText then data.postureText:Remove() end end)
         espObjects[player] = nil
         healthCache[player] = nil
     end
 end
 
--- Cache character part references when character changes
 local function updateESPRefs(data, char)
     if not char then
         data.refs.head = nil
@@ -471,7 +422,6 @@ local function updateESPRefs(data, char)
     data.refs.root = (ok3 and root) or nil
 end
 
--- ==================== PARRY SYSTEM (THROTTLED) ====================
 local ParryTargets = {}
 
 local function getParryKey(target)
@@ -482,7 +432,6 @@ end
 
 local function findValidHead(model)
     if not model then return nil, nil, nil end
-
     local head = safeFindFirstChild(model, CONFIG.HeadName)
     if head then
         local pos = safeGetPosition(head)
@@ -492,7 +441,6 @@ local function findValidHead(model)
             return head, pos, look
         end
     end
-
     local nestedPaths = {
         {"Mesh", "Head"},
         {"Model", "Head"},
@@ -517,13 +465,12 @@ local function findValidHead(model)
             end
         end
     end
-
     return nil, nil, nil
 end
 
 local cachedParryEntities = {}
 local lastParryEntityScan = 0
-local PARRY_ENTITY_SCAN_INTERVAL = 0.2
+local PARRY_ENTITY_SCAN_INTERVAL = 0.05
 
 local function scanParryEntities()
     local current = {}
@@ -549,7 +496,6 @@ local function scanParryEntities()
             end
         end
     end
-
     for key in next, ParryTargets do
         if not current[key] then
             ParryTargets[key] = nil
@@ -569,19 +515,15 @@ end
 local function isAnyoneLookingAtMe()
     local myPos = getMyPosition()
     if not myPos then return false, nil end
-
     for key, data in next, ParryTargets do
         if not data.lastPos or not data.lookVec then continue end
-
         local dx = data.lastPos.X - myPos.X
         local dy = data.lastPos.Y - myPos.Y
         local dz = data.lastPos.Z - myPos.Z
         local dist = math_sqrt(dx*dx + dy*dy + dz*dz)
         if dist < CONFIG.MinTriggerDistance or dist > CONFIG.MaxTriggerDistance then continue end
-
         local toMe = Vector3_new(myPos.X - data.lastPos.X, myPos.Y - data.lastPos.Y, myPos.Z - data.lastPos.Z)
         local angle = angleBetween(data.lookVec, toMe)
-
         if angle <= CONFIG.LookAngleThreshold then
             return true, safeGetName(data.target)
         end
@@ -605,7 +547,7 @@ local function pressFDelayed()
             task_wait(0.05)
             keyrelease(VK_F)
         end)
-        print("[PARRY] F pressed (Monarch + Look confirmed)")
+        print("[PARRY] F pressed")
     end)
 end
 
@@ -613,7 +555,6 @@ local function triggerParry(entityName)
     local now = tick()
     if now < STATE.parryCooldownUntil then return end
     if STATE.parryPending then return end
-
     print(string.format("[PARRY TRIGGER] Monarch active + %s looking at you! Delay: %.1fs", entityName, CONFIG.ParryDelay))
     pressFDelayed()
     STATE.parryCooldownUntil = now + CONFIG.ParryCooldown
@@ -624,25 +565,20 @@ local function triggerParry(entityName)
     end)
 end
 
--- ==================== UI ====================
 local function createUI()
     pcall(function()
         UI.AddTab("Vault", function(tab)
             local sec = tab:Section("Aura", "Left")
-
             sec:Toggle("aura_enabled", "Enable Aura", false, function(val)
                 STATE.enabled = val
                 if not val then STATE.currentTarget = nil end
             end)
-
             sec:SliderFloat("aura_range", "Range", 1, 22.5, CONFIG.AURA_RANGE, "%.1f", function(val)
                 CONFIG.AURA_RANGE = val
             end)
-
             sec:SliderFloat("aura_cooldown", "Cooldown", 0.05, 1.0, CONFIG.ATTACK_COOLDOWN, "%.2f", function(val)
                 CONFIG.ATTACK_COOLDOWN = val
             end)
-
             local sec2 = tab:Section("Parry", "Right")
             sec2:Toggle("parry_enabled", "Enable Parry", true, function(val)
                 STATE.parryEnabled = val
@@ -657,178 +593,13 @@ local function createUI()
     end)
 end
 
--- ==================== INIT ESP PLAYERS ====================
-for _, player in ipairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer then
-        createESP(player)
-    end
-end
-
-Players.PlayerAdded:Connect(function(player)
-    if player ~= LocalPlayer and player.Name ~= LocalPlayer.Name then
-        createESP(player)
-    end
-end)
-
-Players.PlayerRemoving:Connect(removeESP)
-
-if espObjects[LocalPlayer] then
-    removeESP(LocalPlayer)
-end
-
--- ==================== MAIN LOOP (THROTTLED) ====================
 local running = true
 
-RunService.RenderStepped:Connect(function()
-    if not running then return end
-    local now = tick()
-
-    -- === ESP Update (throttled to ~20Hz) ===
-    if now - STATE.lastESPUpdate >= CONFIG.ESP_INTERVAL then
-        STATE.lastESPUpdate = now
-
-        for player, data in next, espObjects do
-            if player == LocalPlayer or player.Name == LocalPlayer.Name then
-                data.hpText.Visible = false
-                data.postureText.Visible = false
-                continue
-            end
-
-            local hpText = data.hpText
-            local postureText = data.postureText
-            local char = player.Character
-
-            -- Only update refs when character changes
-            if char ~= data.lastChar then
-                data.lastChar = char
-                data.cachedMax = nil
-                updateESPRefs(data, char)
-            end
-
-            local head = data.refs.head
-            local root = data.refs.root
-
-            if not head or not root then
-                hpText.Visible = false
-                postureText.Visible = false
-                continue
-            end
-
-            local ok, pos, onScreen = pcall(WorldToScreen, head.Position)
-            if not ok or not onScreen then
-                hpText.Visible = false
-                postureText.Visible = false
-                continue
-            end
-
-            -- Get health/posture
-            local health = getHealth(player)
-            local maxHealth = data.cachedMax or getMaxHealth(player)
-            if maxHealth and not data.cachedMax then
-                data.cachedMax = maxHealth
-            end
-            local posture = getPosture(player)
-
-            if health and maxHealth and maxHealth > 0 and health > 0 then
-                local pct = health / maxHealth
-                if pct > 1 then pct = 1 end
-                if pct < 0 then pct = 0 end
-
-                local hpStr = tostring(math_floor(health))
-                if hpText.Text ~= hpStr then
-                    hpText.Text = hpStr
-                end
-                local newPos = Vector2_new(pos.X, pos.Y - 28)
-                if data.lastPos == nil or math_abs(newPos.X - data.lastPos.X) > 1 or math_abs(newPos.Y - data.lastPos.Y) > 1 then
-                    hpText.Position = newPos
-                    data.lastPos = newPos
-                end
-                hpText.Color = healthColor(pct)
-                hpText.Visible = true
-            else
-                hpText.Visible = false
-            end
-
-            if posture ~= nil then
-                local postStr = tostring(math_floor(posture))
-                if postureText.Text ~= postStr then
-                    postureText.Text = postStr
-                end
-                postureText.Position = Vector2_new(pos.X, pos.Y - 16)
-                postureText.Visible = true
-            else
-                postureText.Visible = false
-            end
-        end
-    end
-
-    -- === Aura Update (throttled) ===
-    updateAura()
-
-    -- === Parry Update (throttled to ~10Hz) ===
-    if STATE.parryEnabled and (now - STATE.lastParryUpdate >= CONFIG.PARRY_INTERVAL) then
-        STATE.lastParryUpdate = now
-        local ok_parry, err_parry = pcall(function()
-            updateParryTargets()
-
-            local monarchDraw = getMonarchDraw()
-            local monarchPresent = (monarchDraw ~= nil)
-
-            if monarchPresent and not STATE.monarchWasPresent then
-                local isLooking, lookerName = isAnyoneLookingAtMe()
-                if isLooking then
-                    triggerParry(lookerName)
-                else
-                    print("[MONARCH_DRAW] Detected but no one looking at you — parry skipped")
-                end
-            end
-
-            if not monarchPresent and STATE.monarchWasPresent then
-                print("[MONARCH_DRAW] Effect disappeared")
-            end
-
-            STATE.monarchWasPresent = monarchPresent
-        end)
-
-        if not ok_parry then
-            print("[PARRY ERROR] " .. tostring(err_parry))
-        end
-    end
-end)
-
--- ==================== INIT ====================
-local function init()
-    if not LocalPlayer then
-        LocalPlayer = Players.LocalPlayer
-        if not LocalPlayer then return end
-    end
-
-    local attempts = 0
-    while attempts < 50 do
-        local ok, char = pcall(function() return LocalPlayer.Character end)
-        if ok and char then
-            local ok2, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
-            if ok2 and root then
-                break
-            end
-        end
-        task_wait(0.1)
-        attempts = attempts + 1
-    end
-
-    createUI()
-end
-
-init()
-
-notify("Vault", "Combined Aura + ESP + Parry Loaded")
-
--- ==================== CLEANUP ====================
-_G.VaultCleanup = function()
+local function doCleanup()
     running = false
     for player, data in next, espObjects do
-        data.hpText:Remove()
-        data.postureText:Remove()
+        pcall(function() if data and data.hpText then data.hpText:Remove() end end)
+        pcall(function() if data and data.postureText then data.postureText:Remove() end end)
     end
     espObjects = {}
     ParryTargets = {}
@@ -836,8 +607,204 @@ _G.VaultCleanup = function()
     cachedTargets = {}
     STATE.enabled = false
     STATE.currentTarget = nil
-    print("[Vault] Cleaned up")
+    LocalPlayer = nil
+    myChar = nil
+    myRoot = nil
+    myPos = nil
+    CONFIG_SelfName = nil
+    print("[Vault] Cleanup done")
 end
 
-print("[Vault Combined] Loaded — Aura + ESP + Look-Gated Monarch Parry")
-print("[Vault Combined] Call _G.VaultCleanup() to stop")
+_G.VaultCleanup = doCleanup
+
+local function isGameValid()
+    local ok, svc = pcall(function() return game:GetService("Players") end)
+    if not ok or not svc then return false end
+    local ok2, lp = pcall(function() return svc.LocalPlayer end)
+    if not ok2 or not lp then return false end
+    local ok3, pid = pcall(function() return game.PlaceId end)
+    if not ok3 or not pid then return false end
+    return true
+end
+
+local function updateESP()
+    for player, data in next, espObjects do
+        if player == LocalPlayer or player.Name == LocalPlayer.Name then
+            data.hpText.Visible = false
+            data.postureText.Visible = false
+            continue
+        end
+        local hpText = data.hpText
+        local postureText = data.postureText
+        local char = player.Character
+        if char ~= data.lastChar then
+            data.lastChar = char
+            data.cachedMax = nil
+            data.lastPos = nil
+            data.lastPosturePos = nil
+            updateESPRefs(data, char)
+        end
+        local head = data.refs.head
+        local root = data.refs.root
+        if not head or not root then
+            hpText.Visible = false
+            postureText.Visible = false
+            continue
+        end
+        local ok, pos, onScreen = pcall(WorldToScreen, head.Position)
+        if not ok or not onScreen then
+            hpText.Visible = false
+            postureText.Visible = false
+            continue
+        end
+        local health = getHealth(player)
+        local maxHealth = data.cachedMax or getMaxHealth(player)
+        if maxHealth and not data.cachedMax then
+            data.cachedMax = maxHealth
+        end
+        local posture = getPosture(player)
+        local hpPos = Vector2_new(pos.X, pos.Y - 28)
+        local posturePos = Vector2_new(pos.X, pos.Y - 16)
+        if health and maxHealth and maxHealth > 0 and health > 0 then
+            local pct = health / maxHealth
+            if pct > 1 then pct = 1 end
+            if pct < 0 then pct = 0 end
+            hpText.Text = tostring(math_floor(health))
+            hpText.Position = hpPos
+            hpText.Color = healthColor(pct)
+            hpText.Visible = true
+        else
+            hpText.Visible = false
+        end
+        if posture ~= nil then
+            postureText.Text = tostring(math_floor(posture))
+            postureText.Position = posturePos
+            postureText.Visible = true
+        else
+            postureText.Visible = false
+        end
+    end
+end
+
+local function onFrame()
+    if not running then return end
+    if not isGameValid() then
+        doCleanup()
+        return
+    end
+    updateESP()
+    updateAura()
+    if STATE.parryEnabled then
+        local ok_parry, err_parry = pcall(function()
+            updateParryTargets()
+            local monarchDraw = getMonarchDraw()
+            local monarchPresent = (monarchDraw ~= nil)
+            if monarchPresent then
+                local isLooking, lookerName = isAnyoneLookingAtMe()
+                if isLooking then
+                    triggerParry(lookerName)
+                end
+            end
+            STATE.monarchWasPresent = monarchPresent
+        end)
+        if not ok_parry then
+            print("[PARRY ERROR] " .. tostring(err_parry))
+        end
+    end
+end
+
+local function mainLoop()
+    local ok_lp, lp = pcall(function() return game:GetService("Players").LocalPlayer end)
+    if not ok_lp or not lp then
+        task_wait(0.5)
+        return mainLoop()
+    end
+    LocalPlayer = lp
+    CONFIG_SelfName = lp.Name
+
+    local Players = game:GetService("Players")
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            createESP(player)
+        end
+    end
+
+    local ok_added, addedConn = pcall(function()
+        return Players.PlayerAdded:Connect(function(player)
+            if player ~= LocalPlayer and player.Name ~= LocalPlayer.Name then
+                createESP(player)
+            end
+        end)
+    end)
+    if not ok_added or not addedConn then
+        print("[Vault] PlayerAdded connect failed")
+    end
+
+    local ok_removed, removedConn = pcall(function()
+        return Players.PlayerRemoving:Connect(function(player)
+            removeESP(player)
+        end)
+    end)
+    if not ok_removed or not removedConn then
+        print("[Vault] PlayerRemoving connect failed")
+    end
+
+    if espObjects[LocalPlayer] then
+        removeESP(LocalPlayer)
+    end
+
+    local ok_pid, pid = pcall(function() return game.PlaceId end)
+    local lastPlaceId = (ok_pid and pid) or 0
+
+    task_spawn(function()
+        while running do
+            local start = tick()
+            local ok, err = pcall(onFrame)
+            if not ok then
+                print("[Vault FRAME ERROR] " .. tostring(err))
+            end
+            local elapsed = tick() - start
+            local sleep = 0.016 - elapsed
+            if sleep > 0 then
+                task_wait(sleep)
+            end
+            local ok_place, currentPlaceId = pcall(function() return game.PlaceId end)
+            if not ok_place or currentPlaceId ~= lastPlaceId then
+                doCleanup()
+                break
+            end
+            local ok_lpc, lpExists = pcall(function() return Players.LocalPlayer ~= nil end)
+            if not ok_lpc or not lpExists then
+                doCleanup()
+                break
+            end
+        end
+    end)
+
+    local function init()
+        if not fetchLocalPlayer() then
+            task_wait(0.1)
+            return init()
+        end
+        local attempts = 0
+        while attempts < 50 do
+            local ok, char = pcall(function() return LocalPlayer.Character end)
+            if ok and char then
+                local ok2, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
+                if ok2 and root then
+                    break
+                end
+            end
+            task_wait(0.1)
+            attempts = attempts + 1
+        end
+        createUI()
+    end
+
+    init()
+    notify("Vault", "Cutie")
+    print("[Vault Combined] Loaded")
+end
+
+mainLoop()
