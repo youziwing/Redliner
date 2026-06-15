@@ -25,7 +25,6 @@ local Vector2_new = Vector2.new
 local Color3_fromRGB = Color3.fromRGB
 local Drawing_new = Drawing.new
 
--- ==================== CONFIG ====================
 local CONFIG = {
     AURA_RANGE = 22.5,
     AURA_ANGLE = 180,
@@ -46,7 +45,6 @@ local CONFIG = {
     PARRY_INTERVAL = 0.1,
 }
 
--- ==================== STATE ====================
 local STATE = {
     enabled = false,
     lastAttack = 0,
@@ -63,7 +61,6 @@ local STATE = {
     lastESPUpdate = 0,
 }
 
--- ==================== BLOCKED NAMES ====================
 local BLOCKED_PATTERNS = {
     "emptydummy",
     "emptymodel",
@@ -82,7 +79,6 @@ local function isBlockedName(name)
     return false
 end
 
--- ==================== LOCAL PLAYER ====================
 local LocalPlayer = Players.LocalPlayer
 local myChar = nil
 local myRoot = nil
@@ -120,7 +116,6 @@ local function isSelf(target)
     return ok and name == CONFIG_SelfName
 end
 
--- ==================== SAFE UTILITIES ====================
 local function safeFindFirstChild(parent, name)
     if not parent then return nil end
     local ok, child = pcall(function() return parent:FindFirstChild(name) end)
@@ -163,31 +158,23 @@ local function safeGetName(instance)
     return "?"
 end
 
--- ==================== HEALTH & POSTURE (DIRECT + CACHED) ====================
--- Deepwoken stores health/posture in player.ReadOnly folder as Value objects
--- We try direct read first, fallback to Humanoid
-
-local healthCache = {} -- [player] = { readOnly=folder, healthVal=obj, maxVal=obj, impactVal=obj, lastBuild=time }
+local healthCache = {}
 
 local function buildHealthCache(player)
     local cache = { readOnly = nil, healthVal = nil, maxVal = nil, impactVal = nil, lastBuild = tick() }
 
-    -- ReadOnly is a child of the Player object, not Character
     local ok, ro = pcall(function() return player:FindFirstChild("ReadOnly") end)
     if ok and ro then
         cache.readOnly = ro
-        -- Try to find health value object
         local ok2, hv = pcall(function() return ro:FindFirstChild("health") end)
         if ok2 and hv then cache.healthVal = hv end
 
-        -- Try maxhealth variants
         local maxNames = {"maxhealth", "maxHealth", "MaxHealth", "HealthMax"}
         for _, n in ipairs(maxNames) do
             local ok3, mv = pcall(function() return ro:FindFirstChild(n) end)
             if ok3 and mv then cache.maxVal = mv break end
         end
 
-        -- Impact / posture
         local ok4, iv = pcall(function() return ro:FindFirstChild("impact") end)
         if ok4 and iv then cache.impactVal = iv end
         if not cache.impactVal then
@@ -206,7 +193,6 @@ end
 local function getHealthCache(player)
     local cache = healthCache[player]
     local now = tick()
-    -- Rebuild cache every 2 seconds or if missing
     if not cache or (now - cache.lastBuild > 2) then
         cache = buildHealthCache(player)
     end
@@ -216,13 +202,11 @@ end
 local function getHealth(player)
     local cache = getHealthCache(player)
 
-    -- Try ReadOnly.health first (Deepwoken native)
     if cache.healthVal then
         local ok, val = pcall(function() return cache.healthVal.Value end)
         if ok and val ~= nil then return val end
     end
 
-    -- Fallback to Humanoid.Health
     local ok, char = pcall(function() return player.Character end)
     if ok and char then
         local ok2, hum = pcall(function() return char:FindFirstChildOfClass("Humanoid") end)
@@ -263,7 +247,6 @@ local function getPosture(player)
         if ok and val ~= nil then return val end
     end
 
-    -- Direct scan as last resort
     local ok, readOnly = pcall(function() return player:FindFirstChild("ReadOnly") end)
     if not ok or not readOnly then return nil end
 
@@ -279,7 +262,6 @@ local function getPosture(player)
     return nil
 end
 
--- ==================== MATH HELPERS ====================
 local function distanceSq(posA, posB)
     if not posA or not posB then return math_huge end
     local dx = posB.X - posA.X
@@ -300,7 +282,6 @@ local function angleBetween(v1, v2)
     return math_deg(rad)
 end
 
--- ==================== AURA SYSTEM (THROTTLED) ====================
 local cachedTargets = {}
 local lastTargetScan = 0
 local TARGET_SCAN_INTERVAL = 0.1
@@ -392,7 +373,6 @@ local function updateAura()
     end
 end
 
--- ==================== ESP SYSTEM (THROTTLED + CACHED) ====================
 local espObjects = {}
 
 local function healthColor(pct)
@@ -436,7 +416,6 @@ local function createESP(player)
         lastHealth = nil,
         lastPosture = nil,
         lastPos = nil,
-        -- Cached part references
         refs = {
             head = nil,
             humanoid = nil,
@@ -455,7 +434,6 @@ local function removeESP(player)
     end
 end
 
--- Cache character part references when character changes
 local function updateESPRefs(data, char)
     if not char then
         data.refs.head = nil
@@ -471,7 +449,6 @@ local function updateESPRefs(data, char)
     data.refs.root = (ok3 and root) or nil
 end
 
--- ==================== PARRY SYSTEM (THROTTLED) ====================
 local ParryTargets = {}
 
 local function getParryKey(target)
@@ -624,7 +601,6 @@ local function triggerParry(entityName)
     end)
 end
 
--- ==================== UI ====================
 local function createUI()
     pcall(function()
         UI.AddTab("Vault", function(tab)
@@ -657,7 +633,6 @@ local function createUI()
     end)
 end
 
--- ==================== INIT ESP PLAYERS ====================
 for _, player in ipairs(Players:GetPlayers()) do
     if player ~= LocalPlayer then
         createESP(player)
@@ -676,14 +651,42 @@ if espObjects[LocalPlayer] then
     removeESP(LocalPlayer)
 end
 
--- ==================== MAIN LOOP (THROTTLED) ====================
 local running = true
+local lastPlaceId = game.PlaceId
+
+local function doCleanup()
+    running = false
+    for player, data in next, espObjects do
+        data.hpText:Remove()
+        data.postureText:Remove()
+    end
+    espObjects = {}
+    ParryTargets = {}
+    healthCache = {}
+    cachedTargets = {}
+    STATE.enabled = false
+    STATE.currentTarget = nil
+    print("[Vault] Auto-cleanup triggered (game left/teleported)")
+end
+
+_G.VaultCleanup = doCleanup
 
 RunService.RenderStepped:Connect(function()
     if not running then return end
     local now = tick()
 
-    -- === ESP Update (throttled to ~20Hz) ===
+    local ok_place, currentPlaceId = pcall(function() return game.PlaceId end)
+    if not ok_place or currentPlaceId ~= lastPlaceId then
+        doCleanup()
+        return
+    end
+
+    local ok_lp, lpExists = pcall(function() return Players.LocalPlayer ~= nil end)
+    if not ok_lp or not lpExists then
+        doCleanup()
+        return
+    end
+
     if now - STATE.lastESPUpdate >= CONFIG.ESP_INTERVAL then
         STATE.lastESPUpdate = now
 
@@ -698,7 +701,6 @@ RunService.RenderStepped:Connect(function()
             local postureText = data.postureText
             local char = player.Character
 
-            -- Only update refs when character changes
             if char ~= data.lastChar then
                 data.lastChar = char
                 data.cachedMax = nil
@@ -721,7 +723,6 @@ RunService.RenderStepped:Connect(function()
                 continue
             end
 
-            -- Get health/posture
             local health = getHealth(player)
             local maxHealth = data.cachedMax or getMaxHealth(player)
             if maxHealth and not data.cachedMax then
@@ -762,10 +763,8 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- === Aura Update (throttled) ===
     updateAura()
 
-    -- === Parry Update (throttled to ~10Hz) ===
     if STATE.parryEnabled and (now - STATE.lastParryUpdate >= CONFIG.PARRY_INTERVAL) then
         STATE.lastParryUpdate = now
         local ok_parry, err_parry = pcall(function()
@@ -796,7 +795,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ==================== INIT ====================
 local function init()
     if not LocalPlayer then
         LocalPlayer = Players.LocalPlayer
@@ -821,23 +819,4 @@ end
 
 init()
 
-notify("Vault", "Combined Aura + ESP + Parry Loaded")
-
--- ==================== CLEANUP ====================
-_G.VaultCleanup = function()
-    running = false
-    for player, data in next, espObjects do
-        data.hpText:Remove()
-        data.postureText:Remove()
-    end
-    espObjects = {}
-    ParryTargets = {}
-    healthCache = {}
-    cachedTargets = {}
-    STATE.enabled = false
-    STATE.currentTarget = nil
-    print("[Vault] Cleaned up")
-end
-
-print("[Vault Combined] Loaded — Aura + ESP + Look-Gated Monarch Parry")
-print("[Vault Combined] Call _G.VaultCleanup() to stop")
+notify("Vault", "Cutie")
