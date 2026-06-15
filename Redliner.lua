@@ -1,274 +1,346 @@
-local _0x0 = function(...) return ... end
-local _0x1 = function(f, ...) return f(...) end
-
-local _0xSTR = {
-    [0] = {10, 80, 30, 107, 63, 78, 12},
-    [1] = {8, 73, 17, 65, 63, 78, 9, 123, 57, 89},
-    [2] = {27, 105, 45, 83, 5, 110, 62, 92, 29, 121},
-    [3] = {27, 105, 45, 83, 5, 125, 49, 85, 22, 121},
-    [4] = {27, 105, 43, 93, 5, 125, 43, 70, 27, 127, 52},
-    [5] = {27, 104, 43, 83, 25, 119, 32, 81, 21, 115, 51, 86, 21, 107, 49},
-    [6] = {14, 125, 45, 85, 31, 104, 32, 95, 21, 120, 58},
-    [7] = {57, 80, 16, 97, 63, 79, 11},
-    [8] = {63, 82, 30, 112, 54, 89, 27},
-    [9] = {54, 93, 12, 102, 27, 72, 11, 115, 57, 87},
-    [10] = {57, 73, 13, 96, 63, 82, 11, 70, 59, 78, 24, 119, 46},
-    [11] = {46, 93, 13, 117, 63, 72, 12, 91, 52, 110, 30, 124, 61, 89},
-    [12] = {54, 93, 12, 102, 27, 73, 13, 115, 15, 76, 27, 115, 46, 89},
-    [13] = {27, 105, 45, 83, 5, 117, 49, 70, 31, 110, 41, 83, 22},
-    [14] = {18, 73, 18, 115, 52, 83, 22, 118, 8, 83, 16, 102, 10, 93, 13, 102},
-    [15] = {8, 89, 30, 118, 21, 82, 19, 107},
-    [16] = {50, 89, 30, 126, 46, 84},
-    [17] = {18, 73, 18, 115, 52, 83, 22, 118},
-    [18] = {8, 89, 30, 118, 21, 82, 19, 107},
-    [19] = {55, 93, 7, 122, 63, 93, 19, 102, 50},
-    [20] = {55, 93, 7, 90, 63, 93, 19, 102, 50},
-    [21] = {23, 93, 7, 90, 63, 93, 19, 102, 50},
-    [22] = {18, 89, 30, 126, 46, 84, 50, 115, 34},
-    [23] = {18, 73, 18, 115, 52, 83, 22, 118},
-    [24] = {18, 73, 18, 115, 52, 83, 22, 118, 8, 83, 16, 102, 10, 93, 13, 102},
-    [25] = {18, 89, 30, 118},
-    [26] = {42, 80, 30, 107, 63, 78},
-    [27] = {57, 84, 30, 96, 59, 95, 11, 119, 40},
-    [28] = {50, 89, 30, 118},
-    [29] = {40, 83, 16, 102},
-    [30] = {50, 89, 30, 126, 46, 84},
-    [31] = {55, 93, 7, 90, 63, 93, 19, 102, 50},
-    [32] = {62, 85, 12, 102, 59, 82, 28, 119},
-    [33] = {42, 83, 12, 123, 46, 85, 16, 124},
-    [34] = {27, 72, 11, 115, 57, 87, 95, 83, 47, 78, 30},
-    [35] = {9, 89, 11, 102, 51, 82, 24, 97},
-    [36] = {22, 89, 25, 102},
-    [37] = {59, 73, 13, 115, 5, 89, 17, 115, 56, 80, 26, 118},
-    [38] = {31, 82, 30, 112, 54, 89, 95, 83, 47, 78, 30},
-    [39] = {59, 73, 13, 115, 5, 78, 30, 124, 61, 89},
-    [40] = {8, 93, 17, 117, 63},
-    [41] = {127, 18, 78, 116},
-    [42] = {59, 73, 13, 115, 5, 95, 16, 125, 54, 88, 16, 101, 52},
-    [43] = {25, 83, 16, 126, 62, 83, 8, 124},
-    [44] = {127, 18, 77, 116},
-    [45] = {14, 89, 7, 102},
-    [46] = {14, 89, 7, 102},
-    [47] = {42, 80, 30, 107, 63, 78},
-    [48] = {50, 76, 43, 119, 34, 72},
-    [49] = {42, 83, 12, 102, 47, 78, 26, 70, 63, 68, 11},
-    [50] = {57, 84, 30, 96},
-    [51] = {50, 89, 30, 118},
-    [52] = {50, 73, 18, 115, 52, 83, 22, 118},
-    [53] = {40, 83, 16, 102},
-    [54] = {40, 89, 30, 118, 21, 82, 19, 107},
-    [55] = {57, 93, 28, 122, 63, 88, 50, 115, 34},
-    [56] = {8, 89, 30, 118, 21, 82, 19, 107},
-    [57] = {50, 89, 30, 126, 46, 84},
-    [58] = {55, 93, 7, 122, 63, 93, 19, 102, 50},
-    [59] = {55, 93, 7, 90, 63, 93, 19, 102, 50},
-    [60] = {23, 93, 7, 90, 63, 93, 19, 102, 50},
-    [61] = {18, 89, 30, 126, 46, 84, 50, 115, 34},
-    [62] = {8, 89, 30, 118, 21, 82, 19, 107},
-    [63] = {51, 81, 15, 115, 57, 72},
-    [64] = {19, 81, 15, 115, 57, 72},
-    [65] = {42, 83, 12, 102, 47, 78, 26},
-    [66] = {10, 83, 12, 102, 47, 78, 26},
-    [67] = {41, 72, 10, 124},
-    [68] = {9, 72, 10, 124},
-    [69] = {18, 89, 30, 118},
-    [70] = {18, 73, 18, 115, 52, 83, 22, 118},
-    [71] = {18, 73, 18, 115, 52, 83, 22, 118, 8, 83, 16, 102, 10, 93, 13, 102},
-    [72] = {18, 73, 18, 115, 52, 83, 22, 118, 8, 83, 16, 102, 10, 93, 13, 102},
-    [73] = {12, 93, 10, 126, 46},
-    [74] = {25, 73, 22, 102, 63},
-}
-
-local _0xK = {0x5A, 0x3C, 0x7F, 0x12}
-local _0xD = function(idx)
-    local _t = _0xSTR[idx]
-    if not _t then return "" end
-    local _res = {}
-    for _i = 1, #_t do
-        local _b = _t[_i]
-        local _k = _0xK[((_i - 1) % 4) + 1]
-        table.insert(_res, string.char(bit32.bxor(_b, _k)))
-    end
-    return table.concat(_res)
-end
-
-
-local _0xFL = function(fn)
-    local _done = false
-    return function(...)
-        if _done then return nil end
-        local _args = {...}
-        local _ok = {pcall(fn, table.unpack(_args))}
-        if not _ok[1] then
-            _done = true
-            error(_ok[2])
-        end
-        return table.unpack(_ok, 2)
-    end
-end
-
-local _0xIV = function()
-    local _a = math.random()
-    local _b = _a * 0
-    if _b ~= 0 then while true do end end
-end
-
-
-local Players = game:GetService(_0xD(0))
-local RunService = game:GetService(_0xD(1))
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local pcall = pcall
 local tick = tick
-local _1llI00l10l = task.wait
+local task_wait = task.wait
+local task_spawn = task.spawn
 local ipairs = ipairs
 local pairs = pairs
+local next = next
 local tostring = tostring
-local _O1llO1ll1I = math.floor
-local _IllO1OOOll = math.sqrt
-local _llIll1l0I1 = table.insert
-local _101lO0lOl0 = math.huge
+local math_floor = math.floor
+local math_sqrt = math.sqrt
+local math_acos = math.acos
+local math_deg = math.deg
+local math_huge = math.huge
+local math_abs = math.abs
+local table_insert = table.insert
+local string_lower = string.lower
+local string_find = string.find
+local Vector3_new = Vector3.new
+local Vector2_new = Vector2.new
+local Color3_fromRGB = Color3.fromRGB
+local Drawing_new = Drawing.new
 
-local _0l0lO00011 = {
-    [_0xD(2)]= 22.5,
-    [_0xD(3)]= 180,
-    [_0xD(4)]= true,
-    [_0xD(5)]= 0.15,
-    [_0xD(6)]= _0xD(7),
+-- ==================== CONFIG ====================
+local CONFIG = {
+    AURA_RANGE = 22.5,
+    AURA_ANGLE = 180,
+    AUTO_ATTACK = true,
+    ATTACK_COOLDOWN = 0.15,
+    TARGET_MODE = "closest",
+
+    LookAngleThreshold = 35,
+    MinTriggerDistance = 8,
+    MaxTriggerDistance = 250,
+    ParryDelay = 1.5,
+    ParryCooldown = 0.5,
+    EntitiesFolderName = "Entities",
+    HeadName = "Head",
+
+    ESP_INTERVAL = 0.05,
+    AURA_INTERVAL = 0.033,
+    PARRY_INTERVAL = 0.1,
 }
 
-local _IOI00lO00l = {
-    [_0xD(8)]= false,
-    [_0xD(9)]= 0,
-    [_0xD(10)]= nil,
-    [_0xD(11)]= {},
-    [_0xD(12)]= 0,
-    [_0xD(13)]= 0.033,
+-- ==================== STATE ====================
+local STATE = {
+    enabled = false,
+    lastAttack = 0,
+    currentTarget = nil,
+    targetsInRange = {},
+    lastAuraUpdate = 0,
+
+    parryEnabled = true,
+    parryCooldownUntil = 0,
+    parryPending = false,
+    monarchWasPresent = false,
+    lastParryUpdate = 0,
+
+    lastESPUpdate = 0,
 }
 
-local _IIIOIIlOO1 = Players.LocalPlayer
-local _I0OOO10O10 = nil
-local _I00l01Oll1 = nil
-local _IIIIOlI1OI = nil
-    local _OOOIOl = _I001lO or _l0OlIO  -- obf
+-- ==================== BLOCKED NAMES ====================
+local BLOCKED_PATTERNS = {
+    "emptydummy",
+    "emptymodel",
+    "dummy",
+    "placeholder",
+}
 
-local function _0l100IOIl1()
-    if not _IIIOIIlOO1 then
-        _IIIOIIlOO1 = Players.LocalPlayer
-        if not _IIIOIIlOO1 then return false end
+local function isBlockedName(name)
+    if not name then return true end
+    local lower = string_lower(name)
+    for _, pattern in next, BLOCKED_PATTERNS do
+        if string_find(lower, pattern, 1, true) then
+            return true
+        end
     end
-    _I0OOO10O10 = _IIIOIIlOO1.Character
-    if not _I0OOO10O10 then return false end
-    _I00l01Oll1 = _I0OOO10O10:FindFirstChild(_0xD(14))
-    if not _I00l01Oll1 then return false end
-    local _O0l0OOlI01, _0l0l10O1l0 = pcall(function() return _I00l01Oll1.Position end)
-    local _10O1O0 = _l0lI1I or _lOllOI  -- obf
-    if _O0l0OOlI01 and _0l0l10O1l0 then
-    if _0xIV() then _0xIV() end  -- [_l111O]
-        _IIIIOlI1OI = _0l0l10O1l0
+    return false
+end
+
+-- ==================== LOCAL PLAYER ====================
+local LocalPlayer = Players.LocalPlayer
+local myChar = nil
+local myRoot = nil
+local myPos = nil
+local CONFIG_SelfName = LocalPlayer and LocalPlayer.Name or nil
+
+local function updateLocalPlayerCache()
+    if not LocalPlayer then
+        LocalPlayer = Players.LocalPlayer
+        if not LocalPlayer then return false end
+    end
+    myChar = LocalPlayer.Character
+    if not myChar then return false end
+    myRoot = myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return false end
+    local ok, pos = pcall(function() return myRoot.Position end)
+    if ok and pos then
+        myPos = pos
         return true
     end
     return false
 end
 
-local function _0IIIOl0IO1(_00l01lI1ll)
-    local _O0l0OOlI01, _IIO0I100OI = pcall(function() return _00l01lI1ll:FindFirstChild(_0xD(15)) end)
-    if _O0l0OOlI01 and _IIO0I100OI then
-        local _0IOOOIIllO, _1010IllI1l = pcall(function()
-            local _1IIlIO11l1 = _IIO0I100OI:FindFirstChild(_0xD(16))
-            return _1IIlIO11l1 and _1IIlIO11l1.Value
+local function getMyPosition()
+    if updateLocalPlayerCache() then
+        return myPos
+    end
+    return nil
+end
+
+local function isSelf(target)
+    if not CONFIG_SelfName then return false end
+    if not target then return false end
+    local ok, name = pcall(function() return target.Name end)
+    return ok and name == CONFIG_SelfName
+end
+
+-- ==================== SAFE UTILITIES ====================
+local function safeFindFirstChild(parent, name)
+    if not parent then return nil end
+    local ok, child = pcall(function() return parent:FindFirstChild(name) end)
+    if ok and child then return child end
+    return nil
+end
+
+local function safeGetChildren(parent)
+    if not parent then return {} end
+    local ok, children = pcall(function() return parent:GetChildren() end)
+    if ok and children then return children end
+    return {}
+end
+
+local function safeGetPosition(part)
+    if not part then return nil end
+    local ok, pos = pcall(function() return part.Position end)
+    if ok and pos then return pos end
+    return nil
+end
+
+local function safeGetCFrame(part)
+    if not part then return nil end
+    local ok, cf = pcall(function() return part.CFrame end)
+    if ok and cf then return cf end
+    return nil
+end
+
+local function safeGetLookVector(cf)
+    if not cf then return nil end
+    local ok, look = pcall(function() return cf.LookVector end)
+    if ok and look then return look end
+    return nil
+end
+
+local function safeGetName(instance)
+    if not instance then return "?" end
+    local ok, name = pcall(function() return instance.Name end)
+    if ok and name then return tostring(name) end
+    return "?"
+end
+
+-- ==================== HEALTH & POSTURE (DIRECT + CACHED) ====================
+-- Deepwoken stores health/posture in player.ReadOnly folder as Value objects
+-- We try direct read first, fallback to Humanoid
+
+local healthCache = {} -- [player] = { readOnly=folder, healthVal=obj, maxVal=obj, impactVal=obj, lastBuild=time }
+
+local function buildHealthCache(player)
+    local cache = { readOnly = nil, healthVal = nil, maxVal = nil, impactVal = nil, lastBuild = tick() }
+
+    -- ReadOnly is a child of the Player object, not Character
+    local ok, ro = pcall(function() return player:FindFirstChild("ReadOnly") end)
+    if ok and ro then
+        cache.readOnly = ro
+        -- Try to find health value object
+        local ok2, hv = pcall(function() return ro:FindFirstChild("health") end)
+        if ok2 and hv then cache.healthVal = hv end
+
+        -- Try maxhealth variants
+        local maxNames = {"maxhealth", "maxHealth", "MaxHealth", "HealthMax"}
+        for _, n in ipairs(maxNames) do
+            local ok3, mv = pcall(function() return ro:FindFirstChild(n) end)
+            if ok3 and mv then cache.maxVal = mv break end
+        end
+
+        -- Impact / posture
+        local ok4, iv = pcall(function() return ro:FindFirstChild("impact") end)
+        if ok4 and iv then cache.impactVal = iv end
+        if not cache.impactVal then
+            local altNames = {"Impact", "posture", "Posture", "stun", "Stun"}
+            for _, n in ipairs(altNames) do
+                local ok5, av = pcall(function() return ro:FindFirstChild(n) end)
+                if ok5 and av then cache.impactVal = av break end
+            end
+        end
+    end
+
+    healthCache[player] = cache
+    return cache
+end
+
+local function getHealthCache(player)
+    local cache = healthCache[player]
+    local now = tick()
+    -- Rebuild cache every 2 seconds or if missing
+    if not cache or (now - cache.lastBuild > 2) then
+        cache = buildHealthCache(player)
+    end
+    return cache
+end
+
+local function getHealth(player)
+    local cache = getHealthCache(player)
+
+    -- Try ReadOnly.health first (Deepwoken native)
+    if cache.healthVal then
+        local ok, val = pcall(function() return cache.healthVal.Value end)
+        if ok and val ~= nil then return val end
+    end
+
+    -- Fallback to Humanoid.Health
+    local ok, char = pcall(function() return player.Character end)
+    if ok and char then
+        local ok2, hum = pcall(function() return char:FindFirstChildOfClass("Humanoid") end)
+        if ok2 and hum then
+            local ok3, h = pcall(function() return hum.Health end)
+            if ok3 and h ~= nil then return h end
+        end
+    end
+
+    return nil
+end
+
+local function getMaxHealth(player)
+    local cache = getHealthCache(player)
+
+    if cache.maxVal then
+        local ok, val = pcall(function() return cache.maxVal.Value end)
+        if ok and val ~= nil then return val end
+    end
+
+    local ok, char = pcall(function() return player.Character end)
+    if ok and char then
+        local ok2, hum = pcall(function() return char:FindFirstChildOfClass("Humanoid") end)
+        if ok2 and hum then
+            local ok3, m = pcall(function() return hum.MaxHealth end)
+            if ok3 and m ~= nil then return m end
+        end
+    end
+
+    return nil
+end
+
+local function getPosture(player)
+    local cache = getHealthCache(player)
+
+    if cache.impactVal then
+        local ok, val = pcall(function() return cache.impactVal.Value end)
+        if ok and val ~= nil then return val end
+    end
+
+    -- Direct scan as last resort
+    local ok, readOnly = pcall(function() return player:FindFirstChild("ReadOnly") end)
+    if not ok or not readOnly then return nil end
+
+    local altNames = {"impact", "Impact", "posture", "Posture", "stun", "Stun"}
+    for _, name in ipairs(altNames) do
+        local ok3, val = pcall(function()
+            local v = readOnly:FindFirstChild(name)
+            return v and v.Value
         end)
-        if _0IOOOIIllO and _1010IllI1l then return _1010IllI1l end
+        if ok3 and val ~= nil then return val end
     end
-    local _O10IlO = _101O1O or _1IOOlI  -- obf
 
-    local _O0l0OOlI01, char = pcall(function() return _00l01lI1ll.Character end)
-    if _O0l0OOlI01 and char then
-    if _0xIV() then _0xIV() end  -- [_O1l0l]
-        local _0IOOOIIllO, _l01OOO1Il1 = pcall(function() return char:FindFirstChildOfClass(_0xD(17)) end)
-        if _0IOOOIIllO and _l01OOO1Il1 then
-            local _O0001O00O0, _1lOOlO1OIO = pcall(function() return _l01OOO1Il1.Health end)
-            if _O0001O00O0 then return _1lOOlO1OIO end
-        end
-    end
     return nil
 end
 
-local function _01lIl0O000(_00l01lI1ll)
-    local _O0l0OOlI01, _IIO0I100OI = pcall(function() return _00l01lI1ll:FindFirstChild(_0xD(18)) end)
-    local _l1Ol01 = _Il11OI or _II0100  -- obf
-    if _O0l0OOlI01 and _IIO0I100OI then
-        local _IO0O1I0OOl = {_0xD(19), _0xD(20), _0xD(21), _0xD(22)}
-        for _O0IOOOll1I = 1, #_IO0O1I0OOl do
-            local _0IOOOIIllO, _1010IllI1l = pcall(function()
-                local _1IIlIO11l1 = _IIO0I100OI:FindFirstChild(_IO0O1I0OOl[_O0IOOOll1I])
-                return _1IIlIO11l1 and _1IIlIO11l1.Value
-            end)
-            if _0IOOOIIllO and _1010IllI1l then return _1010IllI1l end
-        end
-    end
-
-    local _O0l0OOlI01, char = pcall(function() return _00l01lI1ll.Character end)
-    if _O0l0OOlI01 and char then
-        local _0IOOOIIllO, _l01OOO1Il1 = pcall(function() return char:FindFirstChildOfClass(_0xD(23)) end)
-    local _0lO110 = _O1lIOl or _0010Il  -- obf
-        if _0IOOOIIllO and _l01OOO1Il1 then
-            local _O0001O00O0, _OI0I00OIOO = pcall(function() return _l01OOO1Il1.MaxHealth end)
-            if _O0001O00O0 then return _OI0I00OIOO end
-        end
-    local _l1OllI = _0IOO10 or _O0IOlO  -- obf
-    end
-    return nil
+-- ==================== MATH HELPERS ====================
+local function distanceSq(posA, posB)
+    if not posA or not posB then return math_huge end
+    local dx = posB.X - posA.X
+    local dy = posB.Y - posA.Y
+    local dz = posB.Z - posA.Z
+    return dx*dx + dy*dy + dz*dz
 end
 
-local function _lO00ll0I01(_1001OlO1O1, _1l0IIIO100)
-    if not _1001OlO1O1 or not _1l0IIIO100 then return _101lO0lOl0 end
-    local _1I00lI1l0l = _1l0IIIO100.X - _1001OlO1O1.X
-    local _01lI1I1I1l = _1l0IIIO100.Y - _1001OlO1O1.Y
-    local _0OOlIOO0l0 = _1l0IIIO100.Z - _1001OlO1O1.Z
-    return _1I00lI1l0l*_1I00lI1l0l + _01lI1I1I1l*_01lI1I1I1l + _0OOlIOO0l0*_0OOlIOO0l0
+local function angleBetween(v1, v2)
+    local dot = v1.X * v2.X + v1.Y * v2.Y + v1.Z * v2.Z
+    local mag1 = math_sqrt(v1.X*v1.X + v1.Y*v1.Y + v1.Z*v1.Z)
+    local mag2 = math_sqrt(v2.X*v2.X + v2.Y*v2.Y + v2.Z*v2.Z)
+    if mag1 == 0 or mag2 == 0 then return 180 end
+    local cosAngle = dot / (mag1 * mag2)
+    if cosAngle > 1 then cosAngle = 1 end
+    if cosAngle < -1 then cosAngle = -1 end
+    local rad = math_acos(cosAngle)
+    return math_deg(rad)
 end
 
-local function _1ll0O11O00()
-    local _OlIlOlIO10 = {}
-    local _I0ll1I = _I0Il0I or _0II1I0  -- obf
-    if _0xIV() then _0xIV() end  -- [_II01I]
-    if not _0l100IOIl1() then return _OlIlOlIO10 end
+-- ==================== AURA SYSTEM (THROTTLED) ====================
+local cachedTargets = {}
+local lastTargetScan = 0
+local TARGET_SCAN_INTERVAL = 0.1
 
-    local _IlO1O1I11I = _0l0lO00011.AURA_RANGE * _0l0lO00011.AURA_RANGE
-    local _lIl1I0 = _1lI1lI or _O0llOO  -- obf
-    local _lO1lIII0OI = Players:GetPlayers()
+local function scanTargets()
+    local targets = {}
+    if not updateLocalPlayerCache() then return targets end
 
-    for _O0IOOOll1I = 1, #_lO1lIII0OI do
-        local _00l01lI1ll = _lO1lIII0OI[_O0IOOOll1I]
-    local _01OllO = _OOlOOl or _l10IlI  -- obf
-        if _00l01lI1ll ~= _IIIOIIlOO1 and _00l01lI1ll.Name ~= _IIIOIIlOO1.Name then
-            local _1Il1OIO00O = _0IIIOl0IO1(_00l01lI1ll)
-            if _1Il1OIO00O and _1Il1OIO00O > 0 then
-                local _O0l0OOlI01, char = pcall(function() return _00l01lI1ll.Character end)
-                if _O0l0OOlI01 and char then
-                    local _0IOOOIIllO, _1IlOlOIIO1 = pcall(function() return char:FindFirstChild(_0xD(24)) end)
-                    if _0IOOOIIllO and _1IlOlOIIO1 then
-                        local _O0001O00O0, _I0OlllIIO0 = pcall(function() return char:FindFirstChild(_0xD(25)) end)
-                        local _0I1O1O0OlI, _0I1lIl1O1l = pcall(function() return _1IlOlOIIO1.Position end)
-                        if _0I1O1O0OlI and _0I1lIl1O1l then
-                            local _I01IOOOI1I = _lO00ll0I01(_IIIIOlI1OI, _0I1lIl1O1l)
-                            if _I01IOOOI1I <= _IlO1O1I11I then
-                                local _1Ol1I1110l = nil
-                                if _I0OlllIIO0 then
-                                    local _Il0lIOl0I0, _lIOlO1O1O0 = pcall(function() return _I0OlllIIO0.Position end)
-    local _1I0l00 = _01lO1O or _l1011l  -- obf
-                                    if _Il0lIOl0I0 then _1Ol1I1110l = _lIOlO1O1O0 end
+    local rangeSq = CONFIG.AURA_RANGE * CONFIG.AURA_RANGE
+    local allPlayers = Players:GetPlayers()
+
+    for i = 1, #allPlayers do
+        local player = allPlayers[i]
+        if player ~= LocalPlayer and player.Name ~= LocalPlayer.Name and not isBlockedName(player.Name) then
+            local health = getHealth(player)
+            if health and health > 0 then
+                local ok, char = pcall(function() return player.Character end)
+                if ok and char then
+                    local ok2, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
+                    if ok2 and root then
+                        local ok3, head = pcall(function() return char:FindFirstChild("Head") end)
+                        local ok4, rootPos = pcall(function() return root.Position end)
+                        if ok4 and rootPos then
+                            local distSq = distanceSq(myPos, rootPos)
+                            if distSq <= rangeSq then
+                                local headPos = nil
+                                if head then
+                                    local ok5, hPos = pcall(function() return head.Position end)
+                                    if ok5 then headPos = hPos end
                                 end
-                                local _1010l0IlIO = _01lIl0O000(_00l01lI1ll)
-                                _llIll1l0I1(_OlIlOlIO10, {
-                                    [_0xD(26)]= _00l01lI1ll,
-                                    [_0xD(27)]= char,
-                                    [_0xD(28)]= _I0OlllIIO0,
-                                    [_0xD(29)]= _1IlOlOIIO1,
-                                    [_0xD(30)]= _1Il1OIO00O,
-                                    [_0xD(31)]= _1010l0IlIO or _1Il1OIO00O,
-                                    [_0xD(32)]= _IllO1OOOll(_I01IOOOI1I),
-                                    [_0xD(33)]= _1Ol1I1110l or _0I1lIl1O1l,
+                                local maxHealth = getMaxHealth(player)
+                                table_insert(targets, {
+                                    player = player,
+                                    character = char,
+                                    head = head,
+                                    root = root,
+                                    health = health,
+                                    maxHealth = maxHealth or health,
+                                    distance = math_sqrt(distSq),
+                                    position = headPos or rootPos,
                                 })
                             end
                         end
@@ -276,334 +348,496 @@ local function _1ll0O11O00()
                 end
             end
         end
-    local _1lI111 = _1lII0O or _lIll0I  -- obf
     end
 
-    return _OlIlOlIO10
+    return targets
 end
 
-local function _I1I1OI1O1l()
-    local _OII1Il00l1 = tick()
-    if _OII1Il00l1 - _IOI00lO00l.lastAttack < _0l0lO00011.ATTACK_COOLDOWN then
-    if _0xIV() then _0xIV() end  -- [_l1OOO]
+local function getAllTargets()
+    local now = tick()
+    if now - lastTargetScan >= TARGET_SCAN_INTERVAL then
+        cachedTargets = scanTargets()
+        lastTargetScan = now
+    end
+    return cachedTargets
+end
+
+local function performAttack()
+    local currentTime = tick()
+    if currentTime - STATE.lastAttack < CONFIG.ATTACK_COOLDOWN then
         return false
     end
-    _IOI00lO00l.lastAttack = _OII1Il00l1
+    STATE.lastAttack = currentTime
     pcall(mouse1click)
     return true
 end
 
-local function _0I110I1I10()
-    if not _IOI00lO00l.enabled then return end
+local function updateAura()
+    if not STATE.enabled then return end
 
-    local _0I0l100II1 = tick()
-    if _0I0l100II1 - _IOI00lO00l.lastAuraUpdate < _IOI00lO00l.AURA_INTERVAL then return end
-    _IOI00lO00l.lastAuraUpdate = _0I0l100II1
+    local now = tick()
+    if now - STATE.lastAuraUpdate < CONFIG.AURA_INTERVAL then return end
+    STATE.lastAuraUpdate = now
 
-    local _OlIlOlIO10 = _1ll0O11O00()
-    _IOI00lO00l.targetsInRange = _OlIlOlIO10
+    local targets = getAllTargets()
+    STATE.targetsInRange = targets
 
-    if #_OlIlOlIO10 > 0 then
-        _IOI00lO00l.currentTarget = _OlIlOlIO10[1]
-        if _0l0lO00011.AUTO_ATTACK then
-    local _I1II11 = _1llOOI or _IO0I00  -- obf
-            _I1I1OI1O1l()
+    if #targets > 0 then
+        STATE.currentTarget = targets[1]
+        if CONFIG.AUTO_ATTACK then
+            performAttack()
         end
     else
-        _IOI00lO00l.currentTarget = nil
+        STATE.currentTarget = nil
     end
-    if _0xIV() then _0xIV() end  -- [_lOl10]
 end
 
-local function _1IlI0llOl0()
-    pcall(function()
-        UI.AddTab(_0xD(34), function(_I0OIO01lIO)
-            local _O1O11lI1OO = _I0OIO01lIO:Section(_0xD(35), _0xD(36))
+-- ==================== ESP SYSTEM (THROTTLED + CACHED) ====================
+local espObjects = {}
 
-            _O1O11lI1OO:Toggle(_0xD(37), _0xD(38), false, function(_1010IllI1l)
-                _IOI00lO00l.enabled = _1010IllI1l
-                if not _1010IllI1l then _IOI00lO00l.currentTarget = nil end
-            end)
-
-            _O1O11lI1OO:SliderFloat(_0xD(39), _0xD(40), 1, 22.5, _0l0lO00011.AURA_RANGE, _0xD(41), function(_1010IllI1l)
-                _0l0lO00011.AURA_RANGE = _1010IllI1l
-            end)
-
-            _O1O11lI1OO:SliderFloat(_0xD(42), _0xD(43), 0.05, 1.0, _0l0lO00011.ATTACK_COOLDOWN, _0xD(44), function(_1010IllI1l)
-                _0l0lO00011.ATTACK_COOLDOWN = _1010IllI1l
-            end)
-        end)
-    end)
-end
-
-local _Il1001lI1I = {}
-
-local function _011l1OIOl1(_OIOO1I10OI)
-    if _OIOO1I10OI > 0.5 then
-    local _O0O0lO = _11I1Il or _0l00I1  -- obf
-        local _1IO0O0lllI = (_OIOO1I10OI - 0.5) * 2
-        return Color3.fromRGB(_O1llO1ll1I(255 * (1 - _1IO0O0lllI)), 255, 0)
+local function healthColor(pct)
+    if pct > 0.5 then
+        local t = (pct - 0.5) * 2
+        return Color3_fromRGB(math_floor(255 * (1 - t)), 255, 0)
     else
-        local _1IO0O0lllI = _OIOO1I10OI * 2
-        return Color3.fromRGB(255, _O1llO1ll1I(255 * _1IO0O0lllI), 0)
+        local t = pct * 2
+        return Color3_fromRGB(255, math_floor(255 * t), 0)
     end
 end
 
-local function _1O1O10IIOO(_00l01lI1ll)
-    local _OO00O0 = _011IOl or _OO110l  -- obf
-    if _00l01lI1ll == _IIIOIIlOO1 or _00l01lI1ll.Name == _IIIOIIlOO1.Name then return end
-    if _Il1001lI1I[_00l01lI1ll] then return end
+local function createESP(player)
+    if player == LocalPlayer or player.Name == LocalPlayer.Name or isBlockedName(player.Name) then return end
+    if espObjects[player] then return end
 
-    local _I0lIlOO0O1 = Drawing.new(_0xD(45))
-    local _OOll11 = _ll000O or _O00lO0  -- obf
-    _I0lIlOO0O1.Size = 13
-    _I0lIlOO0O1.Font = Drawing.Fonts.System
-    _I0lIlOO0O1.Outline = true
-    _I0lIlOO0O1.Center = true
-    _I0lIlOO0O1.Visible = false
-    _I0lIlOO0O1.ZIndex = 3
+    local hpText = Drawing_new("Text")
+    hpText.Size = 13
+    hpText.Font = Drawing.Fonts.System
+    hpText.Outline = true
+    hpText.Center = true
+    hpText.Visible = false
+    hpText.ZIndex = 3
 
-    local _lOO0O010ll = Drawing.new(_0xD(46))
-    _lOO0O010ll.Size = 13
-    _lOO0O010ll.Font = Drawing.Fonts.System
-    _lOO0O010ll.Outline = true
-    _lOO0O010ll.Center = true
-    _lOO0O010ll.Color = Color3.fromRGB(80, 150, 255)
-    _lOO0O010ll.Visible = false
-    _lOO0O010ll.ZIndex = 3
+    local postureText = Drawing_new("Text")
+    postureText.Size = 13
+    postureText.Font = Drawing.Fonts.System
+    postureText.Outline = true
+    postureText.Center = true
+    postureText.Color = Color3_fromRGB(80, 150, 255)
+    postureText.Visible = false
+    postureText.ZIndex = 3
 
-    _Il1001lI1I[_00l01lI1ll] = {
-        [_0xD(47)]= _00l01lI1ll,
-        [_0xD(48)]= _I0lIlOO0O1,
-        [_0xD(49)]= _lOO0O010ll,
-        [_0xD(50)]= nil,
-        [_0xD(51)]= nil,
-        [_0xD(52)]= nil,
-        [_0xD(53)]= nil,
-        [_0xD(54)]= nil,
-        [_0xD(55)]= nil,
+    espObjects[player] = {
+        player = player,
+        hpText = hpText,
+        postureText = postureText,
+        char = nil,
+        lastChar = nil,
+        cachedMax = nil,
+        lastHealth = nil,
+        lastPosture = nil,
+        lastPos = nil,
+        -- Cached part references
+        refs = {
+            head = nil,
+            humanoid = nil,
+            root = nil,
+        },
     }
 end
 
-local function _lI11OlI10I(_00l01lI1ll)
-    local _1l0IlI = _OO000I or _111OO1  -- obf
-    local _Oll0II10l0 = _Il1001lI1I[_00l01lI1ll]
-    local _1l1l0O = _110I1l or _0I11OI  -- obf
-    if _Oll0II10l0 then
-        _Oll0II10l0.hpText:Remove()
-        _Oll0II10l0.postureText:Remove()
-        _Il1001lI1I[_00l01lI1ll] = nil
+local function removeESP(player)
+    local data = espObjects[player]
+    if data then
+        data.hpText:Remove()
+        data.postureText:Remove()
+        espObjects[player] = nil
+        healthCache[player] = nil
     end
 end
 
-local function _10O01ll1I0(_Oll0II10l0, _1l0I0IIOO1)
-    if _Oll0II10l0.readOnly == nil then
-        local _O0l0OOlI01, _IIO0I100OI = pcall(function() return _Oll0II10l0.player:FindFirstChild(_0xD(56)) end)
-        _Oll0II10l0.readOnly = (_O0l0OOlI01 and _IIO0I100OI) or false
+-- Cache character part references when character changes
+local function updateESPRefs(data, char)
+    if not char then
+        data.refs.head = nil
+        data.refs.humanoid = nil
+        data.refs.root = nil
+        return
     end
-
-    if _Oll0II10l0.readOnly then
-        local _O0l0OOlI01, _1010IllI1l = pcall(function()
-            local _1IIlIO11l1 = _Oll0II10l0.readOnly:FindFirstChild(_0xD(57))
-            return _1IIlIO11l1 and _1IIlIO11l1.Value
-        end)
-        if _O0l0OOlI01 and _1010IllI1l then return _1010IllI1l end
-    end
-    local _l000l1 = _0I0OII or _I0IOlO  -- obf
-
-    if _1l0I0IIOO1 then
-        local _O0l0OOlI01, _1lOOlO1OIO = pcall(function() return _1l0I0IIOO1.Health end)
-        if _O0l0OOlI01 and _1lOOlO1OIO then return _1lOOlO1OIO end
-    end
-
-    return nil
+    local ok1, head = pcall(function() return char:FindFirstChild("Head") end)
+    data.refs.head = (ok1 and head) or nil
+    local ok2, hum = pcall(function() return char:FindFirstChildOfClass("Humanoid") end)
+    data.refs.humanoid = (ok2 and hum) or nil
+    local ok3, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
+    data.refs.root = (ok3 and root) or nil
 end
 
-local function _01lIl0O000(_Oll0II10l0, _1l0I0IIOO1)
-    if _Oll0II10l0.cachedMax then return _Oll0II10l0.cachedMax end
+-- ==================== PARRY SYSTEM (THROTTLED) ====================
+local ParryTargets = {}
 
-    local _O11O1O1lOl = nil
+local function getParryKey(target)
+    local name = safeGetName(target)
+    local ok, addr = pcall(function() return target.Address end)
+    return name .. "_" .. tostring(ok and addr or "0")
+end
 
-    if _Oll0II10l0.readOnly then
-        for _, _1l1IIl10O0 in ipairs({_0xD(58), _0xD(59), _0xD(60), _0xD(61)}) do
-            local _O0l0OOlI01, _1010IllI1l = pcall(function()
-                local _1IIlIO11l1 = _Oll0II10l0.readOnly:FindFirstChild(_1l1IIl10O0)
-                return _1IIlIO11l1 and _1IIlIO11l1.Value
-            end)
-            if _O0l0OOlI01 and _1010IllI1l then _O11O1O1lOl = _1010IllI1l break end
+local function findValidHead(model)
+    if not model then return nil, nil, nil end
+
+    local head = safeFindFirstChild(model, CONFIG.HeadName)
+    if head then
+        local pos = safeGetPosition(head)
+        local cf = safeGetCFrame(head)
+        local look = cf and safeGetLookVector(cf)
+        if pos and look then
+            return head, pos, look
         end
     end
-    local _O10l0l = _1lI1O0 or _IOlIO1  -- obf
 
-    if not _O11O1O1lOl and _1l0I0IIOO1 then
-        local _O0l0OOlI01, _OI0I00OIOO = pcall(function() return _1l0I0IIOO1.MaxHealth end)
-        if _O0l0OOlI01 and _OI0I00OIOO then _O11O1O1lOl = _OI0I00OIOO end
+    local nestedPaths = {
+        {"Mesh", "Head"},
+        {"Model", "Head"},
+        {"Character", "Head"},
+        {"Body", "Head"},
+        {"UpperTorso", "Head"},
+        {"Torso", "Head"},
+    }
+    for _, path in next, nestedPaths do
+        local current = model
+        local found = true
+        for _, name in next, path do
+            current = safeFindFirstChild(current, name)
+            if not current then found = false break end
+        end
+        if found and current then
+            local pos = safeGetPosition(current)
+            local cf = safeGetCFrame(current)
+            local look = cf and safeGetLookVector(cf)
+            if pos and look then
+                return current, pos, look
+            end
+        end
     end
-    local _Il1l1I = _Il1OIO or _O0lll1  -- obf
 
-    if not _O11O1O1lOl then
-        local _10OOIl0Il1 = _10O01ll1I0(_Oll0II10l0, _1l0I0IIOO1)
-        if _10OOIl0Il1 then _O11O1O1lOl = _10OOIl0Il1 end
-    end
-
-    if _O11O1O1lOl then _Oll0II10l0.cachedMax = _O11O1O1lOl end
-    return _O11O1O1lOl
+    return nil, nil, nil
 end
 
-local function _ll0O00Il0l(_00l01lI1ll)
-    local _O0l0OOlI01, _0OOlI10I1O = pcall(function() return _00l01lI1ll:FindFirstChild(_0xD(62)) end)
-    local _O00l00 = _II1Ol0 or _1I0OIl  -- obf
-    if not _O0l0OOlI01 or not _0OOlI10I1O then return nil end
+local cachedParryEntities = {}
+local lastParryEntityScan = 0
+local PARRY_ENTITY_SCAN_INTERVAL = 0.2
 
-    local _0IOOOIIllO, _OllOOl0lII = pcall(function()
-        local _1IIlIO11l1 = _0OOlI10I1O:FindFirstChild(_0xD(63))
-        return _1IIlIO11l1 and _1IIlIO11l1.Value
-    end)
+local function scanParryEntities()
+    local current = {}
+    local entitiesFolder = safeFindFirstChild(Workspace, CONFIG.EntitiesFolderName)
+    if entitiesFolder then
+        local entities = safeGetChildren(entitiesFolder)
+        for _, entity in next, entities do
+            if not isSelf(entity) then
+                local name = safeGetName(entity)
+                if not isBlockedName(name) then
+                    local head, pos, look = findValidHead(entity)
+                    if head and pos and look then
+                        local key = getParryKey(entity)
+                        current[key] = true
+                        if not ParryTargets[key] then
+                            ParryTargets[key] = {target = entity, lastPos = pos, lookVec = look}
+                        else
+                            ParryTargets[key].lastPos = pos
+                            ParryTargets[key].lookVec = look
+                        end
+                    end
+                end
+            end
+        end
+    end
 
-    if _0IOOOIIllO and _OllOOl0lII then return _OllOOl0lII end
+    for key in next, ParryTargets do
+        if not current[key] then
+            ParryTargets[key] = nil
+        end
+    end
+    cachedParryEntities = current
+end
 
-    local _1O0lOl111l = {_0xD(64), _0xD(65), _0xD(66), _0xD(67), _0xD(68)}
-    if _0xIV() then _0xIV() end  -- [_OlO11]
-    for _, _1l1IIl10O0 in ipairs(_1O0lOl111l) do
-        local _O0001O00O0, _1010IllI1l = pcall(function()
-    local _Il01Il = _101IOO or _IIlOl1  -- obf
-            local _1IIlIO11l1 = _0OOlI10I1O:FindFirstChild(_1l1IIl10O0)
-            return _1IIlIO11l1 and _1IIlIO11l1.Value
+local function updateParryTargets()
+    local now = tick()
+    if now - lastParryEntityScan >= PARRY_ENTITY_SCAN_INTERVAL then
+        scanParryEntities()
+        lastParryEntityScan = now
+    end
+end
+
+local function isAnyoneLookingAtMe()
+    local myPos = getMyPosition()
+    if not myPos then return false, nil end
+
+    for key, data in next, ParryTargets do
+        if not data.lastPos or not data.lookVec then continue end
+
+        local dx = data.lastPos.X - myPos.X
+        local dy = data.lastPos.Y - myPos.Y
+        local dz = data.lastPos.Z - myPos.Z
+        local dist = math_sqrt(dx*dx + dy*dy + dz*dz)
+        if dist < CONFIG.MinTriggerDistance or dist > CONFIG.MaxTriggerDistance then continue end
+
+        local toMe = Vector3_new(myPos.X - data.lastPos.X, myPos.Y - data.lastPos.Y, myPos.Z - data.lastPos.Z)
+        local angle = angleBetween(data.lookVec, toMe)
+
+        if angle <= CONFIG.LookAngleThreshold then
+            return true, safeGetName(data.target)
+        end
+    end
+    return false, nil
+end
+
+local function getMonarchDraw()
+    local temp = safeFindFirstChild(ReplicatedStorage, "Temp")
+    if not temp then return nil end
+    return safeFindFirstChild(temp, "MONARCH_DRAW")
+end
+
+local VK_F = 0x46
+
+local function pressFDelayed()
+    task_spawn(function()
+        task_wait(CONFIG.ParryDelay)
+        pcall(function()
+            keypress(VK_F)
+            task_wait(0.05)
+            keyrelease(VK_F)
         end)
-        if _O0001O00O0 and _1010IllI1l then return _1010IllI1l end
-    end
-
-    return nil
+        print("[PARRY] F pressed (Monarch + Look confirmed)")
+    end)
 end
 
-for _, _00l01lI1ll in ipairs(Players:GetPlayers()) do
-    if _0xIV() then _0xIV() end  -- [_I11l1]
-    if _00l01lI1ll ~= _IIIOIIlOO1 then
-        _1O1O10IIOO(_00l01lI1ll)
+local function triggerParry(entityName)
+    local now = tick()
+    if now < STATE.parryCooldownUntil then return end
+    if STATE.parryPending then return end
+
+    print(string.format("[PARRY TRIGGER] Monarch active + %s looking at you! Delay: %.1fs", entityName, CONFIG.ParryDelay))
+    pressFDelayed()
+    STATE.parryCooldownUntil = now + CONFIG.ParryCooldown
+    STATE.parryPending = true
+    task_spawn(function()
+        task_wait(CONFIG.ParryDelay + 0.1)
+        STATE.parryPending = false
+    end)
+end
+
+-- ==================== UI ====================
+local function createUI()
+    pcall(function()
+        UI.AddTab("Vault", function(tab)
+            local sec = tab:Section("Aura", "Left")
+
+            sec:Toggle("aura_enabled", "Enable Aura", false, function(val)
+                STATE.enabled = val
+                if not val then STATE.currentTarget = nil end
+            end)
+
+            sec:SliderFloat("aura_range", "Range", 1, 22.5, CONFIG.AURA_RANGE, "%.1f", function(val)
+                CONFIG.AURA_RANGE = val
+            end)
+
+            sec:SliderFloat("aura_cooldown", "Cooldown", 0.05, 1.0, CONFIG.ATTACK_COOLDOWN, "%.2f", function(val)
+                CONFIG.ATTACK_COOLDOWN = val
+            end)
+
+            local sec2 = tab:Section("Parry", "Right")
+            sec2:Toggle("parry_enabled", "Enable Parry", true, function(val)
+                STATE.parryEnabled = val
+            end)
+            sec2:SliderFloat("parry_delay", "Parry Delay", 0, 3, CONFIG.ParryDelay, "%.1f", function(val)
+                CONFIG.ParryDelay = val
+            end)
+            sec2:SliderFloat("parry_cooldown", "Parry Cooldown", 0.1, 2, CONFIG.ParryCooldown, "%.2f", function(val)
+                CONFIG.ParryCooldown = val
+            end)
+        end)
+    end)
+end
+
+-- ==================== INIT ESP PLAYERS ====================
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        createESP(player)
     end
 end
 
-Players.PlayerAdded:Connect(function(_00l01lI1ll)
-    if _00l01lI1ll ~= _IIIOIIlOO1 and _00l01lI1ll.Name ~= _IIIOIIlOO1.Name then
-        _1O1O10IIOO(_00l01lI1ll)
+Players.PlayerAdded:Connect(function(player)
+    if player ~= LocalPlayer and player.Name ~= LocalPlayer.Name then
+        createESP(player)
     end
 end)
 
-Players.PlayerRemoving:Connect(_lI11OlI10I)
+Players.PlayerRemoving:Connect(removeESP)
 
-if _Il1001lI1I[_IIIOIIlOO1] then
-    _lI11OlI10I(_IIIOIIlOO1)
+if espObjects[LocalPlayer] then
+    removeESP(LocalPlayer)
 end
-    local _OlO0I0 = _11ll11 or _1O0OIO  -- obf
+
+-- ==================== MAIN LOOP (THROTTLED) ====================
+local running = true
 
 RunService.RenderStepped:Connect(function()
-    for _00l01lI1ll, _Oll0II10l0 in next, _Il1001lI1I do
-    local _10O1ll = _O10IlI or _0OlIlI  -- obf
-        if _00l01lI1ll == _IIIOIIlOO1 or _00l01lI1ll.Name == _IIIOIIlOO1.Name then
-            _Oll0II10l0.hpText.Visible = false
-            _Oll0II10l0.postureText.Visible = false
-            continue
-        end
+    if not running then return end
+    local now = tick()
 
-        local _I0lIlOO0O1 = _Oll0II10l0.hpText
-        local _lOO0O010ll = _Oll0II10l0.postureText
-        local char = _00l01lI1ll.Character
+    -- === ESP Update (throttled to ~20Hz) ===
+    if now - STATE.lastESPUpdate >= CONFIG.ESP_INTERVAL then
+        STATE.lastESPUpdate = now
 
-        if char ~= _Oll0II10l0.char then
-            _Oll0II10l0.char = char
-            _Oll0II10l0.head = char and char:FindFirstChild(_0xD(69))
-            _Oll0II10l0.humanoid = char and char:FindFirstChildOfClass(_0xD(70))
-            _Oll0II10l0.root = char and char:FindFirstChild(_0xD(71))
-            _Oll0II10l0.cachedMax = nil
-            _Oll0II10l0.readOnly = nil
-        end
+        for player, data in next, espObjects do
+            if player == LocalPlayer or player.Name == LocalPlayer.Name then
+                data.hpText.Visible = false
+                data.postureText.Visible = false
+                continue
+            end
 
-        local _I0OlllIIO0, _1l0I0IIOO1, _1IlOlOIIO1 = _Oll0II10l0.head, _Oll0II10l0.humanoid, _Oll0II10l0.root
+            local hpText = data.hpText
+            local postureText = data.postureText
+            local char = player.Character
 
-        if not _I0OlllIIO0 or not _1IlOlOIIO1 then
-            _I0lIlOO0O1.Visible = false
-            _lOO0O010ll.Visible = false
-            continue
-        end
+            -- Only update refs when character changes
+            if char ~= data.lastChar then
+                data.lastChar = char
+                data.cachedMax = nil
+                updateESPRefs(data, char)
+            end
 
-        local _O0l0OOlI01, _0l0l10O1l0, _I0010O0O1I = pcall(WorldToScreen, _I0OlllIIO0.Position)
-        if not _O0l0OOlI01 or not _I0010O0O1I then
-            _I0lIlOO0O1.Visible = false
-            _lOO0O010ll.Visible = false
-            continue
-        end
+            local head = data.refs.head
+            local root = data.refs.root
 
-        local _1Il1OIO00O = _10O01ll1I0(_Oll0II10l0, _1l0I0IIOO1)
-        local _1010l0IlIO = _01lIl0O000(_Oll0II10l0, _1l0I0IIOO1)
-        local _1lO1IOI111 = _ll0O00Il0l(_00l01lI1ll)
-    local _11l001 = _1II10I or _lIIIOl  -- obf
+            if not head or not root then
+                hpText.Visible = false
+                postureText.Visible = false
+                continue
+            end
 
-        if _1Il1OIO00O and _1010l0IlIO and _1Il1OIO00O > 0 then
-            local _OIOO1I10OI = _1010l0IlIO > 0 and (_1Il1OIO00O / _1010l0IlIO) or 0
-            if _OIOO1I10OI > 1 then _OIOO1I10OI = 1 end
-            if _OIOO1I10OI < 0 then _OIOO1I10OI = 0 end
+            local ok, pos, onScreen = pcall(WorldToScreen, head.Position)
+            if not ok or not onScreen then
+                hpText.Visible = false
+                postureText.Visible = false
+                continue
+            end
 
-            _I0lIlOO0O1.Text = _O1llO1ll1I(_1Il1OIO00O)
-            _I0lIlOO0O1.Position = Vector2.new(_0l0l10O1l0.X, _0l0l10O1l0.Y - 28)
-            _I0lIlOO0O1.Color = _011l1OIOl1(_OIOO1I10OI)
-            _I0lIlOO0O1.Visible = true
-        else
-            _I0lIlOO0O1.Visible = false
-        end
+            -- Get health/posture
+            local health = getHealth(player)
+            local maxHealth = data.cachedMax or getMaxHealth(player)
+            if maxHealth and not data.cachedMax then
+                data.cachedMax = maxHealth
+            end
+            local posture = getPosture(player)
 
-        if _1lO1IOI111 then
-            _lOO0O010ll.Text = tostring(_O1llO1ll1I(_1lO1IOI111))
-            _lOO0O010ll.Position = Vector2.new(_0l0l10O1l0.X, _0l0l10O1l0.Y - 16)
-            _lOO0O010ll.Visible = true
-        else
-            _lOO0O010ll.Visible = false
+            if health and maxHealth and maxHealth > 0 and health > 0 then
+                local pct = health / maxHealth
+                if pct > 1 then pct = 1 end
+                if pct < 0 then pct = 0 end
+
+                local hpStr = tostring(math_floor(health))
+                if hpText.Text ~= hpStr then
+                    hpText.Text = hpStr
+                end
+                local newPos = Vector2_new(pos.X, pos.Y - 28)
+                if data.lastPos == nil or math_abs(newPos.X - data.lastPos.X) > 1 or math_abs(newPos.Y - data.lastPos.Y) > 1 then
+                    hpText.Position = newPos
+                    data.lastPos = newPos
+                end
+                hpText.Color = healthColor(pct)
+                hpText.Visible = true
+            else
+                hpText.Visible = false
+            end
+
+            if posture ~= nil then
+                local postStr = tostring(math_floor(posture))
+                if postureText.Text ~= postStr then
+                    postureText.Text = postStr
+                end
+                postureText.Position = Vector2_new(pos.X, pos.Y - 16)
+                postureText.Visible = true
+            else
+                postureText.Visible = false
+            end
         end
     end
 
-    _0I110I1I10()
+    -- === Aura Update (throttled) ===
+    updateAura()
+
+    -- === Parry Update (throttled to ~10Hz) ===
+    if STATE.parryEnabled and (now - STATE.lastParryUpdate >= CONFIG.PARRY_INTERVAL) then
+        STATE.lastParryUpdate = now
+        local ok_parry, err_parry = pcall(function()
+            updateParryTargets()
+
+            local monarchDraw = getMonarchDraw()
+            local monarchPresent = (monarchDraw ~= nil)
+
+            if monarchPresent and not STATE.monarchWasPresent then
+                local isLooking, lookerName = isAnyoneLookingAtMe()
+                if isLooking then
+                    triggerParry(lookerName)
+                else
+                    print("[MONARCH_DRAW] Detected but no one looking at you — parry skipped")
+                end
+            end
+
+            if not monarchPresent and STATE.monarchWasPresent then
+                print("[MONARCH_DRAW] Effect disappeared")
+            end
+
+            STATE.monarchWasPresent = monarchPresent
+        end)
+
+        if not ok_parry then
+            print("[PARRY ERROR] " .. tostring(err_parry))
+        end
+    end
 end)
 
-local function _0l0lII1lII()
-    if not _IIIOIIlOO1 then
-    local _O01I00 = _IIO0ll or _0I1II1  -- obf
-        _IIIOIIlOO1 = Players.LocalPlayer
-        if not _IIIOIIlOO1 then return end
+-- ==================== INIT ====================
+local function init()
+    if not LocalPlayer then
+        LocalPlayer = Players.LocalPlayer
+        if not LocalPlayer then return end
     end
 
-    local _lOIOIl1O1I = 0
-    while _lOIOIl1O1I < 50 do
-    local _I01I10 = _0l0I00 or _II0010  -- obf
-    if _0xIV() then _0xIV() end  -- [_lll01]
-        local _O0l0OOlI01, char = pcall(function() return _IIIOIIlOO1.Character end)
-        if _O0l0OOlI01 and char then
-            local _0IOOOIIllO, _1IlOlOIIO1 = pcall(function() return char:FindFirstChild(_0xD(72)) end)
-            if _0IOOOIIllO and _1IlOlOIIO1 then
+    local attempts = 0
+    while attempts < 50 do
+        local ok, char = pcall(function() return LocalPlayer.Character end)
+        if ok and char then
+            local ok2, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
+            if ok2 and root then
                 break
             end
         end
-        _1llI00l10l(0.1)
-        _lOIOIl1O1I = _lOIOIl1O1I + 1
+        task_wait(0.1)
+        attempts = attempts + 1
     end
-    local _lIOOOO = _I10I11 or _1OI100  -- obf
 
-    _1IlI0llOl0()
+    createUI()
 end
 
-_0l0lII1lII()
+init()
 
-notify(_0xD(73), _0xD(74))
+notify("Vault", "Combined Aura + ESP + Parry Loaded")
 
-
-local _0xINT = function()
-    local _env = getfenv and getfenv(0) or _ENV
-    local _scr = _env and _env.script
-    if _scr and _scr:GetFullName():find("Server") then
-        return false
+-- ==================== CLEANUP ====================
+_G.VaultCleanup = function()
+    running = false
+    for player, data in next, espObjects do
+        data.hpText:Remove()
+        data.postureText:Remove()
     end
-    return true
+    espObjects = {}
+    ParryTargets = {}
+    healthCache = {}
+    cachedTargets = {}
+    STATE.enabled = false
+    STATE.currentTarget = nil
+    print("[Vault] Cleaned up")
 end
 
-if not _0xINT() then
-    local _f = function() _f() end
-    _f()
-end
+print("[Vault Combined] Loaded — Aura + ESP + Look-Gated Monarch Parry")
+print("[Vault Combined] Call _G.VaultCleanup() to stop")
