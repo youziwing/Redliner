@@ -1,4 +1,9 @@
-local Players = game:GetService("Players")
+                end
+                postureText.Position = Vector2_new(pos.X, pos.Y - 16)
+                postureText.Visible = true
+            else
+                postureText.Visible = false
+            local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -42,7 +47,7 @@ local CONFIG = {
 
     ESP_INTERVAL = 0.05,
     AURA_INTERVAL = 0.033,
-    PARRY_INTERVAL = 0.1,
+    PARRY_INTERVAL = 0.05,
 }
 
 local STATE = {
@@ -500,7 +505,7 @@ end
 
 local cachedParryEntities = {}
 local lastParryEntityScan = 0
-local PARRY_ENTITY_SCAN_INTERVAL = 0.2
+local PARRY_ENTITY_SCAN_INTERVAL = 0.05
 
 local function scanParryEntities()
     local current = {}
@@ -765,25 +770,18 @@ RunService.RenderStepped:Connect(function()
 
     updateAura()
 
-    if STATE.parryEnabled and (now - STATE.lastParryUpdate >= CONFIG.PARRY_INTERVAL) then
-        STATE.lastParryUpdate = now
+    if STATE.parryEnabled then
         local ok_parry, err_parry = pcall(function()
             updateParryTargets()
 
             local monarchDraw = getMonarchDraw()
             local monarchPresent = (monarchDraw ~= nil)
 
-            if monarchPresent and not STATE.monarchWasPresent then
+            if monarchPresent then
                 local isLooking, lookerName = isAnyoneLookingAtMe()
                 if isLooking then
                     triggerParry(lookerName)
-                else
-                    print("[MONARCH_DRAW] Detected but no one looking at you — parry skipped")
                 end
-            end
-
-            if not monarchPresent and STATE.monarchWasPresent then
-                print("[MONARCH_DRAW] Effect disappeared")
             end
 
             STATE.monarchWasPresent = monarchPresent
@@ -820,3 +818,5 @@ end
 init()
 
 notify("Vault", "Cutie")
+
+print("[Vault Combined] Loaded")
