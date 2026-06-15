@@ -594,6 +594,7 @@ local function createUI()
 end
 
 local running = true
+local lastPlayerList = {}
 
 local function doCleanup()
     running = false
@@ -605,6 +606,7 @@ local function doCleanup()
     ParryTargets = {}
     healthCache = {}
     cachedTargets = {}
+    lastPlayerList = {}
     STATE.enabled = false
     STATE.currentTarget = nil
     LocalPlayer = nil
@@ -625,6 +627,32 @@ local function isGameValid()
     local ok3, pid = pcall(function() return game.PlaceId end)
     if not ok3 or not pid then return false end
     return true
+end
+
+local function updatePlayerList()
+    local ok, allPlayers = pcall(function() return game:GetService("Players"):GetPlayers() end)
+    if not ok or not allPlayers then return end
+    for _, player in ipairs(allPlayers) do
+        if player ~= LocalPlayer and player.Name ~= LocalPlayer.Name then
+            if not lastPlayerList[player] then
+                lastPlayerList[player] = true
+                createESP(player)
+            end
+        end
+    end
+    for player in next, lastPlayerList do
+        local stillHere = false
+        for _, p in ipairs(allPlayers) do
+            if p == player then
+                stillHere = true
+                break
+            end
+        end
+        if not stillHere then
+            lastPlayerList[player] = nil
+            removeESP(player)
+        end
+    end
 end
 
 local function updateESP()
@@ -693,7 +721,6 @@ local function onFrame()
         return
     end
     updateESP()
-    updateAura()
     if STATE.parryEnabled then
         local ok_parry, err_parry = pcall(function()
             updateParryTargets()
@@ -713,6 +740,22 @@ local function onFrame()
     end
 end
 
+local function auraLoop()
+    while running do
+        if STATE.enabled then
+            updateAura()
+        end
+        task_wait(0.01)
+    end
+end
+
+local function playerPollLoop()
+    while running do
+        updatePlayerList()
+        task_wait(0.5)
+    end
+end
+
 local function mainLoop()
     local ok_lp, lp = pcall(function() return game:GetService("Players").LocalPlayer end)
     if not ok_lp or not lp then
@@ -727,27 +770,8 @@ local function mainLoop()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             createESP(player)
+            lastPlayerList[player] = true
         end
-    end
-
-    local ok_added, addedConn = pcall(function()
-        return Players.PlayerAdded:Connect(function(player)
-            if player ~= LocalPlayer and player.Name ~= LocalPlayer.Name then
-                createESP(player)
-            end
-        end)
-    end)
-    if not ok_added or not addedConn then
-        print("[Vault] PlayerAdded connect failed")
-    end
-
-    local ok_removed, removedConn = pcall(function()
-        return Players.PlayerRemoving:Connect(function(player)
-            removeESP(player)
-        end)
-    end)
-    if not ok_removed or not removedConn then
-        print("[Vault] PlayerRemoving connect failed")
     end
 
     if espObjects[LocalPlayer] then
@@ -781,6 +805,9 @@ local function mainLoop()
             end
         end
     end)
+
+    task_spawn(auraLoop)
+    task_spawn(playerPollLoop)
 
     local function init()
         if not fetchLocalPlayer() then
