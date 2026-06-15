@@ -8,10 +8,7 @@ local next = next
 local tostring = tostring
 local math_floor = math.floor
 local math_sqrt = math.sqrt
-local math_acos = math.acos
-local math_deg = math.deg
 local math_huge = math.huge
-local math_abs = math.abs
 local table_insert = table.insert
 local string_lower = string.lower
 local string_find = string.find
@@ -26,13 +23,6 @@ local CONFIG = {
     AUTO_ATTACK = true,
     ATTACK_COOLDOWN = 0.15,
     TARGET_MODE = "closest",
-    LookAngleThreshold = 35,
-    MinTriggerDistance = 8,
-    MaxTriggerDistance = 250,
-    ParryDelay = 1.5,
-    ParryCooldown = 0.5,
-    EntitiesFolderName = "Entities",
-    HeadName = "Head",
     ESP_INTERVAL = 0.016,
     AURA_INTERVAL = 0.033,
 }
@@ -43,10 +33,6 @@ local STATE = {
     currentTarget = nil,
     targetsInRange = {},
     lastAuraUpdate = 0,
-    parryEnabled = true,
-    parryCooldownUntil = 0,
-    parryPending = false,
-    monarchWasPresent = false,
     lastESPUpdate = 0,
 }
 
@@ -133,20 +119,6 @@ local function safeGetPosition(part)
     if not part then return nil end
     local ok, pos = pcall(function() return part.Position end)
     if ok and pos then return pos end
-    return nil
-end
-
-local function safeGetCFrame(part)
-    if not part then return nil end
-    local ok, cf = pcall(function() return part.CFrame end)
-    if ok and cf then return cf end
-    return nil
-end
-
-local function safeGetLookVector(cf)
-    if not cf then return nil end
-    local ok, look = pcall(function() return cf.LookVector end)
-    if ok and look then return look end
     return nil
 end
 
@@ -253,18 +225,6 @@ local function distanceSq(posA, posB)
     local dy = posB.Y - posA.Y
     local dz = posB.Z - posA.Z
     return dx*dx + dy*dy + dz*dz
-end
-
-local function angleBetween(v1, v2)
-    local dot = v1.X * v2.X + v1.Y * v2.Y + v1.Z * v2.Z
-    local mag1 = math_sqrt(v1.X*v1.X + v1.Y*v1.Y + v1.Z*v1.Z)
-    local mag2 = math_sqrt(v2.X*v2.X + v2.Y*v2.Y + v2.Z*v2.Z)
-    if mag1 == 0 or mag2 == 0 then return 180 end
-    local cosAngle = dot / (mag1 * mag2)
-    if cosAngle > 1 then cosAngle = 1 end
-    if cosAngle < -1 then cosAngle = -1 end
-    local rad = math_acos(cosAngle)
-    return math_deg(rad)
 end
 
 local cachedTargets = {}
@@ -422,177 +382,6 @@ local function updateESPRefs(data, char)
     data.refs.root = (ok3 and root) or nil
 end
 
-local ParryTargets = {}
-
-local function getParryKey(target)
-    local name = safeGetName(target)
-    local ok, addr = pcall(function() return target.Address end)
-    return name .. "_" .. tostring(ok and addr or "0")
-end
-
-local function findValidHead(model)
-    if not model then return nil, nil, nil end
-    local head = safeFindFirstChild(model, CONFIG.HeadName)
-    if head then
-        local pos = safeGetPosition(head)
-        local cf = safeGetCFrame(head)
-        local look = cf and safeGetLookVector(cf)
-        if pos and look then
-            return head, pos, look
-        end
-    end
-    local nestedPaths = {
-        {"Mesh", "Head"},
-        {"Model", "Head"},
-        {"Character", "Head"},
-        {"Body", "Head"},
-        {"UpperTorso", "Head"},
-        {"Torso", "Head"},
-    }
-    for _, path in next, nestedPaths do
-        local current = model
-        local found = true
-        for _, name in next, path do
-            current = safeFindFirstChild(current, name)
-            if not current then found = false break end
-        end
-        if found and current then
-            local pos = safeGetPosition(current)
-            local cf = safeGetCFrame(current)
-            local look = cf and safeGetLookVector(cf)
-            if pos and look then
-                return current, pos, look
-            end
-        end
-    end
-    return nil, nil, nil
-end
-
-local cachedParryEntities = {}
-local lastParryEntityScan = 0
-local PARRY_ENTITY_SCAN_INTERVAL = 0.05
-
-local function scanParryEntities()
-    local current = {}
-    local entitiesFolder = safeFindFirstChild(Workspace, CONFIG.EntitiesFolderName)
-    if entitiesFolder then
-        local entities = safeGetChildren(entitiesFolder)
-        for _, entity in next, entities do
-            if not isSelf(entity) then
-                local name = safeGetName(entity)
-                if not isBlockedName(name) then
-                    local head, pos, look = findValidHead(entity)
-                    if head and pos and look then
-                        local key = getParryKey(entity)
-                        current[key] = true
-                        if not ParryTargets[key] then
-                            ParryTargets[key] = {target = entity, lastPos = pos, lookVec = look}
-                        else
-                            ParryTargets[key].lastPos = pos
-                            ParryTargets[key].lookVec = look
-                        end
-                    end
-                end
-            end
-        end
-    end
-    for key in next, ParryTargets do
-        if not current[key] then
-            ParryTargets[key] = nil
-        end
-    end
-    cachedParryEntities = current
-end
-
-local function updateParryTargets()
-    local now = tick()
-    if now - lastParryEntityScan >= PARRY_ENTITY_SCAN_INTERVAL then
-        scanParryEntities()
-        lastParryEntityScan = now
-    end
-end
-
-local function isAnyoneLookingAtMe()
-    local myPos = getMyPosition()
-    if not myPos then return false, nil end
-    for key, data in next, ParryTargets do
-        if not data.lastPos or not data.lookVec then continue end
-        local dx = data.lastPos.X - myPos.X
-        local dy = data.lastPos.Y - myPos.Y
-        local dz = data.lastPos.Z - myPos.Z
-        local dist = math_sqrt(dx*dx + dy*dy + dz*dz)
-        if dist < CONFIG.MinTriggerDistance or dist > CONFIG.MaxTriggerDistance then continue end
-        local toMe = Vector3_new(myPos.X - data.lastPos.X, myPos.Y - data.lastPos.Y, myPos.Z - data.lastPos.Z)
-        local angle = angleBetween(data.lookVec, toMe)
-        if angle <= CONFIG.LookAngleThreshold then
-            return true, safeGetName(data.target)
-        end
-    end
-    return false, nil
-end
-
-local function getMonarchDraw()
-    local temp = safeFindFirstChild(ReplicatedStorage, "Temp")
-    if not temp then return nil end
-    return safeFindFirstChild(temp, "MONARCH_DRAW")
-end
-
-local VK_F = 0x46
-
-local function pressFDelayed()
-    task_spawn(function()
-        task_wait(CONFIG.ParryDelay)
-        pcall(function()
-            keypress(VK_F)
-            task_wait(0.05)
-            keyrelease(VK_F)
-        end)
-        print("[PARRY] F pressed")
-    end)
-end
-
-local function triggerParry(entityName)
-    local now = tick()
-    if now < STATE.parryCooldownUntil then return end
-    if STATE.parryPending then return end
-    print(string.format("[PARRY TRIGGER] Monarch active + %s looking at you! Delay: %.1fs", entityName, CONFIG.ParryDelay))
-    pressFDelayed()
-    STATE.parryCooldownUntil = now + CONFIG.ParryCooldown
-    STATE.parryPending = true
-    task_spawn(function()
-        task_wait(CONFIG.ParryDelay + 0.1)
-        STATE.parryPending = false
-    end)
-end
-
-local function createUI()
-    pcall(function()
-        UI.AddTab("Vault", function(tab)
-            local sec = tab:Section("Aura", "Left")
-            sec:Toggle("aura_enabled", "Enable Aura", false, function(val)
-                STATE.enabled = val
-                if not val then STATE.currentTarget = nil end
-            end)
-            sec:SliderFloat("aura_range", "Range", 1, 22.5, CONFIG.AURA_RANGE, "%.1f", function(val)
-                CONFIG.AURA_RANGE = val
-            end)
-            sec:SliderFloat("aura_cooldown", "Cooldown", 0.05, 1.0, CONFIG.ATTACK_COOLDOWN, "%.2f", function(val)
-                CONFIG.ATTACK_COOLDOWN = val
-            end)
-            local sec2 = tab:Section("Parry", "Right")
-            sec2:Toggle("parry_enabled", "Enable Parry", true, function(val)
-                STATE.parryEnabled = val
-            end)
-            sec2:SliderFloat("parry_delay", "Parry Delay", 0, 3, CONFIG.ParryDelay, "%.1f", function(val)
-                CONFIG.ParryDelay = val
-            end)
-            sec2:SliderFloat("parry_cooldown", "Parry Cooldown", 0.1, 2, CONFIG.ParryCooldown, "%.2f", function(val)
-                CONFIG.ParryCooldown = val
-            end)
-        end)
-    end)
-end
-
 local running = true
 local lastPlayerList = {}
 
@@ -603,7 +392,6 @@ local function doCleanup()
         pcall(function() if data and data.postureText then data.postureText:Remove() end end)
     end
     espObjects = {}
-    ParryTargets = {}
     healthCache = {}
     cachedTargets = {}
     lastPlayerList = {}
@@ -721,23 +509,6 @@ local function onFrame()
         return
     end
     updateESP()
-    if STATE.parryEnabled then
-        local ok_parry, err_parry = pcall(function()
-            updateParryTargets()
-            local monarchDraw = getMonarchDraw()
-            local monarchPresent = (monarchDraw ~= nil)
-            if monarchPresent then
-                local isLooking, lookerName = isAnyoneLookingAtMe()
-                if isLooking then
-                    triggerParry(lookerName)
-                end
-            end
-            STATE.monarchWasPresent = monarchPresent
-        end)
-        if not ok_parry then
-            print("[PARRY ERROR] " .. tostring(err_parry))
-        end
-    end
 end
 
 local function auraLoop()
@@ -754,6 +525,24 @@ local function playerPollLoop()
         updatePlayerList()
         task_wait(0.5)
     end
+end
+
+local function createUI()
+    pcall(function()
+        UI.AddTab("Redliner", function(tab)
+            local sec = tab:Section("Aura", "Left")
+            sec:Toggle("aura_enabled", "Enable Aura", false, function(val)
+                STATE.enabled = val
+                if not val then STATE.currentTarget = nil end
+            end)
+            sec:SliderFloat("aura_range", "Range", 1, 22.5, CONFIG.AURA_RANGE, "%.1f", function(val)
+                CONFIG.AURA_RANGE = val
+            end)
+            sec:SliderFloat("aura_cooldown", "Cooldown", 0.05, 1.0, CONFIG.ATTACK_COOLDOWN, "%.2f", function(val)
+                CONFIG.ATTACK_COOLDOWN = val
+            end)
+        end)
+    end)
 end
 
 local function mainLoop()
@@ -831,7 +620,6 @@ local function mainLoop()
 
     init()
     notify("Vault", "Cutie")
-    print("[Vault Combined] Loaded")
 end
 
 mainLoop()
