@@ -30,7 +30,7 @@ local CONFIG = {
 }
 
 local STATE = {
-    enabled = false,
+    enabled = true,
     lastAttack = 0,
     currentTarget = nil,
     targetsInRange = {},
@@ -461,32 +461,6 @@ local function isGameValid()
     return ok3 and pid ~= nil
 end
 
-local function createUI()
-    STATE.enabled = false
-    STATE.currentTarget = nil
-    local ok, res = pcall(function()
-        if not UI or not UI.AddTab then return false end
-        UI.AddTab("Redliner", function(tab)
-            local sec = tab:Section("Aura", "Left")
-            sec:Toggle("aura_enabled", "Enable Aura", false, function(val)
-                STATE.enabled = (val == true)
-                if not STATE.enabled then STATE.currentTarget = nil end
-            end)
-            sec:SliderFloat("aura_range", "Range", 1, 22.5, CONFIG.AURA_RANGE, "%.1f", function(val)
-                CONFIG.AURA_RANGE = val
-            end)
-            sec:SliderFloat("aura_cooldown", "Cooldown", 0.05, 1.0, CONFIG.ATTACK_COOLDOWN, "%.2f", function(val)
-                CONFIG.ATTACK_COOLDOWN = val
-            end)
-        end)
-        pcall(function() if UI.SetValue then UI.SetValue("aura_enabled", false) end end)
-        STATE.enabled = false
-        STATE.currentTarget = nil
-        return true
-    end)
-    return ok and res
-end
-
 local function onFrame()
     if not running then return end
     if not isGameValid() then doCleanup() return end
@@ -508,7 +482,7 @@ local function playerPollLoop()
 end
 
 local function mainLoop()
-    STATE.enabled = false
+    STATE.enabled = true
     STATE.currentTarget = nil
     local lp = nil
     for _ = 1, 100 do
@@ -545,10 +519,6 @@ local function mainLoop()
     end)
     task_spawn(auraLoop)
     task_spawn(playerPollLoop)
-    for _ = 1, 10 do
-        if createUI() then break end
-        task_wait(0.5)
-    end
     for _ = 1, 50 do
         local char = getMyPosition()
         if char then break end
