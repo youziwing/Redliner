@@ -3,7 +3,6 @@ local tick = tick
 local task_wait = task.wait
 local task_spawn = task.spawn
 local ipairs = ipairs
-local pairs = pairs
 local next = next
 local tostring = tostring
 local math_floor = math.floor
@@ -22,9 +21,12 @@ local CONFIG = {
     AURA_ANGLE = 180,
     AUTO_ATTACK = true,
     ATTACK_COOLDOWN = 0.15,
-    TARGET_MODE = "closest",
-    ESP_INTERVAL = 0.016,
     AURA_INTERVAL = 0.033,
+    PARRY_USE_PRESS_RELEASE = true,
+    PARRY_DOUBLE_TAP = false,
+    PARRY_DOUBLE_TAP_DELAY = 0.05,
+    PARRY_REQUIRE_FOCUS = true,
+    PARRY_VERIFY_TARGET = true,
 }
 
 local STATE = {
@@ -33,7 +35,6 @@ local STATE = {
     currentTarget = nil,
     targetsInRange = {},
     lastAuraUpdate = 0,
-    lastESPUpdate = 0,
 }
 
 local BLOCKED_PATTERNS = {
@@ -42,6 +43,33 @@ local BLOCKED_PATTERNS = {
     "dummy",
     "placeholder",
 }
+
+local function getLocalPlayer()
+    local ok, svc = pcall(function() return game:GetService("Players") end)
+    if not ok or not svc then return nil end
+    local ok2, lp = pcall(function() return svc.LocalPlayer end)
+    return ok2 and lp or nil
+end
+
+local function getMyPosition()
+    local lp = getLocalPlayer()
+    if not lp then return nil end
+    local ok, char = pcall(function() return lp.Character end)
+    if not ok or not char then return nil end
+    local ok2, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
+    if not ok2 or not root then return nil end
+    local ok3, pos = pcall(function() return root.Position end)
+    return ok3 and pos or nil
+end
+
+local function isSelf(target)
+    local lp = getLocalPlayer()
+    if not lp or not target then return false end
+    if target == lp then return true end
+    local ok, tName = pcall(function() return target.Name end)
+    local ok2, mName = pcall(function() return lp.Name end)
+    return ok and ok2 and tName == mName
+end
 
 local function isBlockedName(name)
     if not name then return true end
@@ -54,88 +82,12 @@ local function isBlockedName(name)
     return false
 end
 
-local LocalPlayer = nil
-local myChar = nil
-local myRoot = nil
-local myPos = nil
-local CONFIG_SelfName = nil
-
-local function fetchLocalPlayer()
-    if LocalPlayer then return true end
-    local ok, svc = pcall(function() return game:GetService("Players") end)
-    if not ok or not svc then return false end
-    local ok2, lp = pcall(function() return svc.LocalPlayer end)
-    if ok2 and lp then
-        LocalPlayer = lp
-        CONFIG_SelfName = lp.Name
-        return true
-    end
-    return false
-end
-
-local function updateLocalPlayerCache()
-    if not fetchLocalPlayer() then return false end
-    myChar = LocalPlayer.Character
-    if not myChar then return false end
-    myRoot = myChar:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return false end
-    local ok, pos = pcall(function() return myRoot.Position end)
-    if ok and pos then
-        myPos = pos
-        return true
-    end
-    return false
-end
-
-local function getMyPosition()
-    if updateLocalPlayerCache() then
-        return myPos
-    end
-    return nil
-end
-
-local function isSelf(target)
-    if not CONFIG_SelfName then return false end
-    if not target then return false end
-    local ok, name = pcall(function() return target.Name end)
-    return ok and name == CONFIG_SelfName
-end
-
-local function safeFindFirstChild(parent, name)
-    if not parent then return nil end
-    local ok, child = pcall(function() return parent:FindFirstChild(name) end)
-    if ok and child then return child end
-    return nil
-end
-
-local function safeGetChildren(parent)
-    if not parent then return {} end
-    local ok, children = pcall(function() return parent:GetChildren() end)
-    if ok and children then return children end
-    return {}
-end
-
-local function safeGetPosition(part)
-    if not part then return nil end
-    local ok, pos = pcall(function() return part.Position end)
-    if ok and pos then return pos end
-    return nil
-end
-
-local function safeGetName(instance)
-    if not instance then return "?" end
-    local ok, name = pcall(function() return instance.Name end)
-    if ok and name then return tostring(name) end
-    return "?"
-end
-
 local healthCache = {}
 
 local function buildHealthCache(player)
-    local cache = { readOnly = nil, healthVal = nil, maxVal = nil, impactVal = nil, lastBuild = tick() }
+    local cache = { healthVal = nil, maxVal = nil, impactVal = nil, lastBuild = tick() }
     local ok, ro = pcall(function() return player:FindFirstChild("ReadOnly") end)
     if ok and ro then
-        cache.readOnly = ro
         local ok2, hv = pcall(function() return ro:FindFirstChild("health") end)
         if ok2 and hv then cache.healthVal = hv end
         local maxNames = {"maxhealth", "maxHealth", "MaxHealth", "HealthMax"}
@@ -143,14 +95,10 @@ local function buildHealthCache(player)
             local ok3, mv = pcall(function() return ro:FindFirstChild(n) end)
             if ok3 and mv then cache.maxVal = mv break end
         end
-        local ok4, iv = pcall(function() return ro:FindFirstChild("impact") end)
-        if ok4 and iv then cache.impactVal = iv end
-        if not cache.impactVal then
-            local altNames = {"Impact", "posture", "Posture", "stun", "Stun"}
-            for _, n in ipairs(altNames) do
-                local ok5, av = pcall(function() return ro:FindFirstChild(n) end)
-                if ok5 and av then cache.impactVal = av break end
-            end
+        local altNames = {"impact", "Impact", "posture", "Posture", "stun", "Stun"}
+        for _, n in ipairs(altNames) do
+            local ok4, iv = pcall(function() return ro:FindFirstChild(n) end)
+            if ok4 and iv then cache.impactVal = iv break end
         end
     end
     healthCache[player] = cache
@@ -159,8 +107,7 @@ end
 
 local function getHealthCache(player)
     local cache = healthCache[player]
-    local now = tick()
-    if not cache or (now - cache.lastBuild > 2) then
+    if not cache or (tick() - cache.lastBuild > 2) then
         cache = buildHealthCache(player)
     end
     return cache
@@ -206,15 +153,15 @@ local function getPosture(player)
         local ok, val = pcall(function() return cache.impactVal.Value end)
         if ok and val ~= nil then return val end
     end
-    local ok, readOnly = pcall(function() return player:FindFirstChild("ReadOnly") end)
-    if not ok or not readOnly then return nil end
+    local ok, ro = pcall(function() return player:FindFirstChild("ReadOnly") end)
+    if not ok or not ro then return nil end
     local altNames = {"impact", "Impact", "posture", "Posture", "stun", "Stun"}
-    for _, name in ipairs(altNames) do
-        local ok3, val = pcall(function()
-            local v = readOnly:FindFirstChild(name)
+    for _, n in ipairs(altNames) do
+        local ok2, val = pcall(function()
+            local v = ro:FindFirstChild(n)
             return v and v.Value
         end)
-        if ok3 and val ~= nil then return val end
+        if ok2 and val ~= nil then return val end
     end
     return nil
 end
@@ -229,43 +176,46 @@ end
 
 local cachedTargets = {}
 local lastTargetScan = 0
-local TARGET_SCAN_INTERVAL = 0.1
 
 local function scanTargets()
     local targets = {}
-    if not updateLocalPlayerCache() then return targets end
+    local myPos = getMyPosition()
+    if not myPos then return targets end
+    local lp = getLocalPlayer()
+    if not lp then return targets end
     local rangeSq = CONFIG.AURA_RANGE * CONFIG.AURA_RANGE
-    local allPlayers = game:GetService("Players"):GetPlayers()
-    for i = 1, #allPlayers do
-        local player = allPlayers[i]
-        if player ~= LocalPlayer and player.Name ~= LocalPlayer.Name and not isBlockedName(player.Name) then
-            local health = getHealth(player)
-            if health and health > 0 then
-                local ok, char = pcall(function() return player.Character end)
-                if ok and char then
-                    local ok2, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
-                    if ok2 and root then
-                        local ok3, head = pcall(function() return char:FindFirstChild("Head") end)
-                        local ok4, rootPos = pcall(function() return root.Position end)
-                        if ok4 and rootPos then
-                            local distSq = distanceSq(myPos, rootPos)
-                            if distSq <= rangeSq then
-                                local headPos = nil
-                                if head then
-                                    local ok5, hPos = pcall(function() return head.Position end)
-                                    if ok5 then headPos = hPos end
+    local ok, all = pcall(function() return game:GetService("Players"):GetPlayers() end)
+    if not ok or not all then return targets end
+    for i = 1, #all do
+        local p = all[i]
+        if p ~= lp and not isSelf(p) then
+            local okN, name = pcall(function() return p.Name end)
+            if okN and name and not isBlockedName(name) then
+                local health = getHealth(p)
+                if health and health > 0 then
+                    local okC, char = pcall(function() return p.Character end)
+                    if okC and char then
+                        local okR, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
+                        if okR and root then
+                            local okH, head = pcall(function() return char:FindFirstChild("Head") end)
+                            local okP, rootPos = pcall(function() return root.Position end)
+                            if okP and rootPos then
+                                local distSq = distanceSq(myPos, rootPos)
+                                if distSq <= rangeSq then
+                                    local headPos = nil
+                                    if head then
+                                        local okHP, hPos = pcall(function() return head.Position end)
+                                        if okHP then headPos = hPos end
+                                    end
+                                    table_insert(targets, {
+                                        player = p,
+                                        root = root,
+                                        health = health,
+                                        maxHealth = getMaxHealth(p) or health,
+                                        distance = math_sqrt(distSq),
+                                        position = headPos or rootPos,
+                                    })
                                 end
-                                local maxHealth = getMaxHealth(player)
-                                table_insert(targets, {
-                                    player = player,
-                                    character = char,
-                                    head = head,
-                                    root = root,
-                                    health = health,
-                                    maxHealth = maxHealth or health,
-                                    distance = math_sqrt(distSq),
-                                    position = headPos or rootPos,
-                                })
                             end
                         end
                     end
@@ -278,7 +228,7 @@ end
 
 local function getAllTargets()
     local now = tick()
-    if now - lastTargetScan >= TARGET_SCAN_INTERVAL then
+    if now - lastTargetScan >= 0.1 then
         cachedTargets = scanTargets()
         lastTargetScan = now
     end
@@ -286,13 +236,33 @@ local function getAllTargets()
 end
 
 local function performAttack()
-    local currentTime = tick()
-    if currentTime - STATE.lastAttack < CONFIG.ATTACK_COOLDOWN then
+    local now = tick()
+    if now - STATE.lastAttack < (CONFIG.ATTACK_COOLDOWN - 0.02) then
         return false
     end
-    STATE.lastAttack = currentTime
-    pcall(mouse1click)
-    return true
+    if CONFIG.PARRY_REQUIRE_FOCUS then
+        local okF, focused = pcall(isrbxactive)
+        if okF and not focused then return false end
+    end
+    STATE.lastAttack = now
+    if CONFIG.PARRY_USE_PRESS_RELEASE then
+        if pcall(mouse1press) then
+            if CONFIG.PARRY_DOUBLE_TAP then
+                task_wait(CONFIG.PARRY_DOUBLE_TAP_DELAY)
+                pcall(mouse1release)
+                task_wait(CONFIG.PARRY_DOUBLE_TAP_DELAY)
+                pcall(mouse1press)
+                task_wait(CONFIG.PARRY_DOUBLE_TAP_DELAY)
+                pcall(mouse1release)
+            else
+                task_wait(0.016)
+                pcall(mouse1release)
+            end
+            return true
+        end
+        return pcall(mouse1click)
+    end
+    return pcall(mouse1click)
 end
 
 local function updateAura()
@@ -303,9 +273,22 @@ local function updateAura()
     local targets = getAllTargets()
     STATE.targetsInRange = targets
     if #targets > 0 then
-        STATE.currentTarget = targets[1]
+        local target = targets[1]
+        STATE.currentTarget = target
         if CONFIG.AUTO_ATTACK then
-            performAttack()
+            if CONFIG.PARRY_VERIFY_TARGET and target.root then
+                local ok, curPos = pcall(function() return target.root.Position end)
+                local myPos = getMyPosition()
+                if ok and curPos and myPos then
+                    if distanceSq(myPos, curPos) <= CONFIG.AURA_RANGE * CONFIG.AURA_RANGE then
+                        performAttack()
+                    end
+                else
+                    performAttack()
+                end
+            else
+                performAttack()
+            end
         end
     else
         STATE.currentTarget = nil
@@ -325,35 +308,33 @@ local function healthColor(pct)
 end
 
 local function createESP(player)
-    if player == LocalPlayer or player.Name == LocalPlayer.Name or isBlockedName(player.Name) then return end
+    local lp = getLocalPlayer()
+    if not lp then return end
+    if player == lp or isSelf(player) then return end
+    local okN, name = pcall(function() return player.Name end)
+    if not okN or not name or isBlockedName(name) then return end
     if espObjects[player] then return end
-    local hpText = Drawing_new("Text")
-    hpText.Size = 13
-    hpText.Font = Drawing.Fonts.System
-    hpText.Outline = true
-    hpText.Center = true
-    hpText.Visible = false
-    hpText.ZIndex = 3
-    local postureText = Drawing_new("Text")
-    postureText.Size = 13
-    postureText.Font = Drawing.Fonts.System
-    postureText.Outline = true
-    postureText.Center = true
-    postureText.Color = Color3_fromRGB(80, 150, 255)
-    postureText.Visible = false
-    postureText.ZIndex = 3
+    local hp = Drawing_new("Text")
+    hp.Size = 13
+    hp.Font = Drawing.Fonts.System
+    hp.Outline = true
+    hp.Center = true
+    hp.Visible = false
+    hp.ZIndex = 3
+    local posture = Drawing_new("Text")
+    posture.Size = 13
+    posture.Font = Drawing.Fonts.System
+    posture.Outline = true
+    posture.Center = true
+    posture.Color = Color3_fromRGB(80, 150, 255)
+    posture.Visible = false
+    posture.ZIndex = 3
     espObjects[player] = {
-        player = player,
-        hpText = hpText,
-        postureText = postureText,
-        char = nil,
+        hpText = hp,
+        postureText = posture,
         lastChar = nil,
         cachedMax = nil,
-        lastHealth = nil,
-        lastPosture = nil,
-        lastPos = nil,
-        lastPosturePos = nil,
-        refs = { head = nil, humanoid = nil, root = nil },
+        refs = { head = nil, root = nil },
     }
 end
 
@@ -367,42 +348,106 @@ local function removeESP(player)
     end
 end
 
-local function updateESPRefs(data, char)
-    if not char then
-        data.refs.head = nil
-        data.refs.humanoid = nil
-        data.refs.root = nil
-        return
+local function updateESP()
+    local lp = getLocalPlayer()
+    if not lp then return end
+    for player, data in next, espObjects do
+        if player == lp or isSelf(player) then
+            data.hpText.Visible = false
+            data.postureText.Visible = false
+            continue
+        end
+        local char = nil
+        local okC, c = pcall(function() return player.Character end)
+        if okC then char = c end
+        if char ~= data.lastChar then
+            data.lastChar = char
+            data.cachedMax = nil
+            if char then
+                local okH, head = pcall(function() return char:FindFirstChild("Head") end)
+                local okR, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
+                data.refs.head = okH and head or nil
+                data.refs.root = okR and root or nil
+            else
+                data.refs.head = nil
+                data.refs.root = nil
+            end
+        end
+        local head = data.refs.head
+        if not head then
+            data.hpText.Visible = false
+            data.postureText.Visible = false
+            continue
+        end
+        local ok, pos, onScreen = pcall(WorldToScreen, head.Position)
+        if not ok or not onScreen or not pos then
+            data.hpText.Visible = false
+            data.postureText.Visible = false
+            continue
+        end
+        local health = getHealth(player)
+        local maxHealth = data.cachedMax or getMaxHealth(player)
+        if maxHealth and not data.cachedMax then data.cachedMax = maxHealth end
+        local posture = getPosture(player)
+        local hpPos = Vector2_new(pos.X, pos.Y - 28)
+        local ppPos = Vector2_new(pos.X, pos.Y - 16)
+        if health and maxHealth and maxHealth > 0 and health > 0 then
+            local pct = health / maxHealth
+            if pct > 1 then pct = 1 elseif pct < 0 then pct = 0 end
+            data.hpText.Text = tostring(math_floor(health))
+            data.hpText.Position = hpPos
+            data.hpText.Color = healthColor(pct)
+            data.hpText.Visible = true
+        else
+            data.hpText.Visible = false
+        end
+        if posture ~= nil then
+            data.postureText.Text = tostring(math_floor(posture))
+            data.postureText.Position = ppPos
+            data.postureText.Visible = true
+        else
+            data.postureText.Visible = false
+        end
     end
-    local ok1, head = pcall(function() return char:FindFirstChild("Head") end)
-    data.refs.head = (ok1 and head) or nil
-    local ok2, hum = pcall(function() return char:FindFirstChildOfClass("Humanoid") end)
-    data.refs.humanoid = (ok2 and hum) or nil
-    local ok3, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
-    data.refs.root = (ok3 and root) or nil
+end
+
+local lastPlayerList = {}
+
+local function updatePlayerList()
+    local lp = getLocalPlayer()
+    if not lp then return end
+    local ok, all = pcall(function() return game:GetService("Players"):GetPlayers() end)
+    if not ok or not all then return end
+    for _, p in ipairs(all) do
+        if p ~= lp and not isSelf(p) and not lastPlayerList[p] then
+            lastPlayerList[p] = true
+            createESP(p)
+        end
+    end
+    for p in next, lastPlayerList do
+        local here = false
+        for _, v in ipairs(all) do if v == p then here = true break end end
+        if not here then
+            lastPlayerList[p] = nil
+            removeESP(p)
+        end
+    end
 end
 
 local running = true
-local lastPlayerList = {}
 
 local function doCleanup()
     running = false
-    for player, data in next, espObjects do
-        pcall(function() if data and data.hpText then data.hpText:Remove() end end)
-        pcall(function() if data and data.postureText then data.postureText:Remove() end end)
+    STATE.enabled = false
+    STATE.currentTarget = nil
+    for p, d in next, espObjects do
+        pcall(function() if d.hpText then d.hpText:Remove() end end)
+        pcall(function() if d.postureText then d.postureText:Remove() end end)
     end
     espObjects = {}
     healthCache = {}
     cachedTargets = {}
     lastPlayerList = {}
-    STATE.enabled = false
-    STATE.currentTarget = nil
-    LocalPlayer = nil
-    myChar = nil
-    myRoot = nil
-    myPos = nil
-    CONFIG_SelfName = nil
-    print("[Vault] Cleanup done")
 end
 
 _G.VaultCleanup = doCleanup
@@ -413,127 +458,19 @@ local function isGameValid()
     local ok2, lp = pcall(function() return svc.LocalPlayer end)
     if not ok2 or not lp then return false end
     local ok3, pid = pcall(function() return game.PlaceId end)
-    if not ok3 or not pid then return false end
-    return true
-end
-
-local function updatePlayerList()
-    local ok, allPlayers = pcall(function() return game:GetService("Players"):GetPlayers() end)
-    if not ok or not allPlayers then return end
-    for _, player in ipairs(allPlayers) do
-        if player ~= LocalPlayer and player.Name ~= LocalPlayer.Name then
-            if not lastPlayerList[player] then
-                lastPlayerList[player] = true
-                createESP(player)
-            end
-        end
-    end
-    for player in next, lastPlayerList do
-        local stillHere = false
-        for _, p in ipairs(allPlayers) do
-            if p == player then
-                stillHere = true
-                break
-            end
-        end
-        if not stillHere then
-            lastPlayerList[player] = nil
-            removeESP(player)
-        end
-    end
-end
-
-local function updateESP()
-    for player, data in next, espObjects do
-        if player == LocalPlayer or player.Name == LocalPlayer.Name then
-            data.hpText.Visible = false
-            data.postureText.Visible = false
-            continue
-        end
-        local hpText = data.hpText
-        local postureText = data.postureText
-        local char = player.Character
-        if char ~= data.lastChar then
-            data.lastChar = char
-            data.cachedMax = nil
-            data.lastPos = nil
-            data.lastPosturePos = nil
-            updateESPRefs(data, char)
-        end
-        local head = data.refs.head
-        local root = data.refs.root
-        if not head or not root then
-            hpText.Visible = false
-            postureText.Visible = false
-            continue
-        end
-        local ok, pos, onScreen = pcall(WorldToScreen, head.Position)
-        if not ok or not onScreen then
-            hpText.Visible = false
-            postureText.Visible = false
-            continue
-        end
-        local health = getHealth(player)
-        local maxHealth = data.cachedMax or getMaxHealth(player)
-        if maxHealth and not data.cachedMax then
-            data.cachedMax = maxHealth
-        end
-        local posture = getPosture(player)
-        local hpPos = Vector2_new(pos.X, pos.Y - 28)
-        local posturePos = Vector2_new(pos.X, pos.Y - 16)
-        if health and maxHealth and maxHealth > 0 and health > 0 then
-            local pct = health / maxHealth
-            if pct > 1 then pct = 1 end
-            if pct < 0 then pct = 0 end
-            hpText.Text = tostring(math_floor(health))
-            hpText.Position = hpPos
-            hpText.Color = healthColor(pct)
-            hpText.Visible = true
-        else
-            hpText.Visible = false
-        end
-        if posture ~= nil then
-            postureText.Text = tostring(math_floor(posture))
-            postureText.Position = posturePos
-            postureText.Visible = true
-        else
-            postureText.Visible = false
-        end
-    end
-end
-
-local function onFrame()
-    if not running then return end
-    if not isGameValid() then
-        doCleanup()
-        return
-    end
-    updateESP()
-end
-
-local function auraLoop()
-    while running do
-        if STATE.enabled then
-            updateAura()
-        end
-        task_wait(0.01)
-    end
-end
-
-local function playerPollLoop()
-    while running do
-        updatePlayerList()
-        task_wait(0.5)
-    end
+    return ok3 and pid ~= nil
 end
 
 local function createUI()
-    pcall(function()
+    STATE.enabled = false
+    STATE.currentTarget = nil
+    local ok, res = pcall(function()
+        if not UI or not UI.AddTab then return false end
         UI.AddTab("Redliner", function(tab)
             local sec = tab:Section("Aura", "Left")
             sec:Toggle("aura_enabled", "Enable Aura", false, function(val)
-                STATE.enabled = val
-                if not val then STATE.currentTarget = nil end
+                STATE.enabled = (val == true)
+                if not STATE.enabled then STATE.currentTarget = nil end
             end)
             sec:SliderFloat("aura_range", "Range", 1, 22.5, CONFIG.AURA_RANGE, "%.1f", function(val)
                 CONFIG.AURA_RANGE = val
@@ -542,84 +479,83 @@ local function createUI()
                 CONFIG.ATTACK_COOLDOWN = val
             end)
         end)
+        pcall(function() if UI.SetValue then UI.SetValue("aura_enabled", false) end end)
+        STATE.enabled = false
+        STATE.currentTarget = nil
+        return true
     end)
+    return ok and res
+end
+
+local function onFrame()
+    if not running then return end
+    if not isGameValid() then doCleanup() return end
+    updateESP()
+end
+
+local function auraLoop()
+    while running do
+        if STATE.enabled then pcall(updateAura) end
+        task_wait(0.01)
+    end
+end
+
+local function playerPollLoop()
+    while running do
+        pcall(updatePlayerList)
+        task_wait(0.5)
+    end
 end
 
 local function mainLoop()
-    local ok_lp, lp = pcall(function() return game:GetService("Players").LocalPlayer end)
-    if not ok_lp or not lp then
-        task_wait(0.5)
-        return mainLoop()
+    STATE.enabled = false
+    STATE.currentTarget = nil
+    local lp = nil
+    for _ = 1, 100 do
+        lp = getLocalPlayer()
+        if lp then break end
+        task_wait(0.1)
     end
-    LocalPlayer = lp
-    CONFIG_SelfName = lp.Name
-
+    if not lp then return end
     local Players = game:GetService("Players")
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            createESP(player)
-            lastPlayerList[player] = true
+    local ok, all = pcall(function() return Players:GetPlayers() end)
+    if ok and all then
+        for _, p in ipairs(all) do
+            if p ~= lp and not isSelf(p) then
+                createESP(p)
+                lastPlayerList[p] = true
+            end
         end
     end
-
-    if espObjects[LocalPlayer] then
-        removeESP(LocalPlayer)
-    end
-
+    if espObjects[lp] then removeESP(lp) end
     local ok_pid, pid = pcall(function() return game.PlaceId end)
-    local lastPlaceId = (ok_pid and pid) or 0
-
+    local lastPlaceId = ok_pid and pid or 0
     task_spawn(function()
         while running do
             local start = tick()
-            local ok, err = pcall(onFrame)
-            if not ok then
-                print("[Vault FRAME ERROR] " .. tostring(err))
-            end
+            pcall(onFrame)
             local elapsed = tick() - start
             local sleep = 0.016 - elapsed
-            if sleep > 0 then
-                task_wait(sleep)
-            end
-            local ok_place, currentPlaceId = pcall(function() return game.PlaceId end)
-            if not ok_place or currentPlaceId ~= lastPlaceId then
-                doCleanup()
-                break
-            end
-            local ok_lpc, lpExists = pcall(function() return Players.LocalPlayer ~= nil end)
-            if not ok_lpc or not lpExists then
-                doCleanup()
-                break
-            end
+            if sleep > 0 then task_wait(sleep) end
+            local okP, curId = pcall(function() return game.PlaceId end)
+            if not okP or curId ~= lastPlaceId then doCleanup() break end
+            local okL, exists = pcall(function() return Players.LocalPlayer ~= nil end)
+            if not okL or not exists then doCleanup() break end
         end
     end)
-
     task_spawn(auraLoop)
     task_spawn(playerPollLoop)
-
-    local function init()
-        if not fetchLocalPlayer() then
-            task_wait(0.1)
-            return init()
-        end
-        local attempts = 0
-        while attempts < 50 do
-            local ok, char = pcall(function() return LocalPlayer.Character end)
-            if ok and char then
-                local ok2, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
-                if ok2 and root then
-                    break
-                end
-            end
-            task_wait(0.1)
-            attempts = attempts + 1
-        end
-        createUI()
+    for _ = 1, 10 do
+        if createUI() then break end
+        task_wait(0.5)
     end
-
-    init()
-    notify("Vault", "Cutie")
+    for _ = 1, 50 do
+        local char = getMyPosition()
+        if char then break end
+        task_wait(0.1)
+    end
 end
 
-mainLoop()
+pcall(mainLoop)
+
+notify("Vault", "Cutie Patootie", 7)
