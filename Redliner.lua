@@ -548,3 +548,75 @@ end
 pcall(mainLoop)
 
 notify("Vault", "Cutie Patootie", 7)
+
+local parryConfig = {
+    CastigateDelay = 0.45,
+    ScanInterval = 0.01,
+}
+
+local VK_F = 0x46
+local lastPressTick = 0
+local COOLDOWN = 0.3
+
+local function pressF(delay)
+    local now = tick()
+    if now - lastPressTick < COOLDOWN then return end
+    lastPressTick = now
+    task.spawn(function()
+        task.wait(delay)
+        keypress(VK_F)
+        task.wait(0.05)
+        keyrelease(VK_F)
+    end)
+end
+
+local seenCastigates = {}
+local castigateActive = false
+local parryEnabled = true
+local parryToggleDebounce = false
+
+local function onParryKeyPress(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.T then
+        if parryToggleDebounce then return end
+        parryToggleDebounce = true
+        parryEnabled = not parryEnabled
+        notify("Vault", "Auto Parry: " .. (parryEnabled and "ON" or "OFF"), 3)
+        task.wait(0.3)
+        parryToggleDebounce = false
+    end
+end
+
+UserInputService.InputBegan:Connect(onParryKeyPress)
+
+local function runLoop()
+    while true do
+        if not parryEnabled then task.wait(parryConfig.ScanInterval) continue end
+        local lp = game:GetService("Players").LocalPlayer
+        if not lp or not lp.PlayerGui then task.wait(parryConfig.ScanInterval) continue end
+        local visualEffects = lp.PlayerGui:FindFirstChild("VisualEffects")
+        if not visualEffects then task.wait(parryConfig.ScanInterval) continue end
+        local castigate = visualEffects:FindFirstChild("Cross")
+        local isNewCastigate = false
+        if castigate then
+            local addr = tostring(castigate.Address)
+            if not seenCastigates[addr] then
+                seenCastigates[addr] = tick()
+                isNewCastigate = true
+            end
+        end
+        if isNewCastigate and not castigateActive then
+            pressF(parryConfig.CastigateDelay)
+        end
+        castigateActive = isNewCastigate
+        local now = tick()
+        for addr, time in next, seenCastigates do
+            if now - time > 2 then
+                seenCastigates[addr] = nil
+            end
+        end
+        task.wait(parryConfig.ScanInterval)
+    end
+end
+
+task.spawn(runLoop)
