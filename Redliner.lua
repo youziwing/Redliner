@@ -27,6 +27,7 @@ local CONFIG = {
     PARRY_DOUBLE_TAP_DELAY = 0.05,
     PARRY_REQUIRE_FOCUS = true,
     PARRY_VERIFY_TARGET = true,
+    TOGGLE_KEY = "r", -- Toggle key for auto attack
 }
 
 local STATE = {
@@ -43,6 +44,24 @@ local BLOCKED_PATTERNS = {
     "dummy",
     "placeholder",
 }
+
+-- Key input handling
+local UserInputService = game:GetService("UserInputService")
+local toggleDebounce = false
+
+local function onKeyPress(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode[CONFIG.TOGGLE_KEY:upper()] then
+        if toggleDebounce then return end
+        toggleDebounce = true
+        CONFIG.AUTO_ATTACK = not CONFIG.AUTO_ATTACK
+        notify("Vault", "Auto Attack: " .. (CONFIG.AUTO_ATTACK and "ON" or "OFF"), 3)
+        task_wait(0.3)
+        toggleDebounce = false
+    end
+end
+
+UserInputService.InputBegan:Connect(onKeyPress)
 
 local function getLocalPlayer()
     local ok, svc = pcall(function() return game:GetService("Players") end)
