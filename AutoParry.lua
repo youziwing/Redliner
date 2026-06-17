@@ -644,47 +644,8 @@ local function visualLoop()
     end
 end
 
-local function buildMatchaUI()
-    local ok, UI = pcall(function() return _G.UI end)
-    if not ok or not UI then
-        ok, UI = pcall(function() return getgenv().UI end)
-    end
-    if not ok or not UI then
-        ok, UI = pcall(function() return shared.UI end)
-    end
-    if not ok or not UI then return end
-
-    pcall(function()
-        UI.AddTab("Auto Parry", function(tab)
-            local sec = tab:Section("Toggles", "Left")
-
-            sec:Toggle("catigate_toggle", "Catigate", CONFIG.CrossEnabled, function(state)
-                CONFIG.CrossEnabled = state
-            end)
-
-            sec:Toggle("monarch_toggle", "Monarch", CONFIG.GlareEnabled, function(state)
-                CONFIG.GlareEnabled = state
-            end)
-
-            local secDelays = tab:Section("Delays", "Right")
-
-            secDelays:SliderFloat("castigate_delay", "Catigate Delay", 0.01, 2.0, CONFIG.CastigateDelay, "%.2f", function(val)
-                CONFIG.CastigateDelay = val
-            end)
-
-            secDelays:SliderFloat("monarch_delay", "Monarch Delay", 0.1, 3.0, CONFIG.MonarchDelay, "%.2f", function(val)
-                CONFIG.MonarchDelay = val
-            end)
-
-            secDelays:SliderFloat("parry_cooldown", "Parry Cooldown", 0.05, 1.0, CONFIG.ParryCooldown, "%.2f", function(val)
-                CONFIG.ParryCooldown = val
-            end)
-        end)
-    end)
-end
 
 initStaticGlareAddr()
-buildMatchaUI()
 task_spawn(parryLoop)
 task_spawn(visualLoop)
 
