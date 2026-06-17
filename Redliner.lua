@@ -17,7 +17,7 @@ local Color3_fromRGB = Color3.fromRGB
 local Drawing_new = Drawing.new
 
 local CONFIG = {
-    AURA_RANGE = 22.5,
+    AURA_RANGE = 25.8,
     AURA_ANGLE = 180,
     AUTO_ATTACK = true,
     ATTACK_COOLDOWN = 0.15,
@@ -27,7 +27,11 @@ local CONFIG = {
     PARRY_DOUBLE_TAP_DELAY = 0.05,
     PARRY_REQUIRE_FOCUS = true,
     PARRY_VERIFY_TARGET = true,
-    TOGGLE_KEY = "r", -- Toggle key for auto attack
+    TOGGLE_KEY = "r",
+    ESP_TOGGLE_KEY = "p",
+    -- Hurtbox settings
+    HURTBOX_TARGET_SIZE = Vector3_new(13, 13, 13),
+    HURTBOX_SCAN_INTERVAL = 5, -- scan every 0.5s (not every frame!)
 }
 
 local STATE = {
@@ -36,6 +40,10 @@ local STATE = {
     currentTarget = nil,
     targetsInRange = {},
     lastAuraUpdate = 0,
+    espEnabled = true,
+    -- Hurtbox state
+    hurtboxSeen = {},
+    entitiesFolder = nil,
 }
 
 local BLOCKED_PATTERNS = {
@@ -48,6 +56,7 @@ local BLOCKED_PATTERNS = {
 -- Key input handling
 local UserInputService = game:GetService("UserInputService")
 local toggleDebounce = false
+local espToggleDebounce = false
 
 local function onKeyPress(input, gameProcessed)
     if gameProcessed then return end
@@ -58,6 +67,36 @@ local function onKeyPress(input, gameProcessed)
         notify("Vault", "Auto Attack: " .. (CONFIG.AUTO_ATTACK and "ON" or "OFF"), 3)
         task_wait(0.3)
         toggleDebounce = false
+    end
+    if input.KeyCode == Enum.KeyCode[CONFIG.ESP_TOGGLE_KEY:upper()] then
+        if espToggleDebounce then return end
+        espToggleDebounce = true
+        STATE.espEnabled = not STATE.espEnabled
+        if not STATE.espEnabled then
+            if espObjects then
+                for p, d in next, espObjects do
+                    if d then
+                        if d.hpText then
+                            pcall(function() d.hpText.Visible = false end)
+                            pcall(function() d.hpText:Remove() end)
+                        end
+                        if d.postureText then
+                            pcall(function() d.postureText.Visible = false end)
+                            pcall(function() d.postureText:Remove() end)
+                        end
+                    end
+                end
+            end
+            espObjects = {}
+            healthCache = {}
+            cachedTargets = {}
+            lastPlayerList = {}
+            notify("Vault", "ESP: REMOVED", 3)
+        else
+            notify("Vault", "ESP: ON", 3)
+        end
+        task_wait(0.3)
+        espToggleDebounce = false
     end
 end
 
@@ -314,6 +353,39 @@ local function updateAura()
     end
 end
 
+local function processHurtbox(obj)
+    if not obj or not obj:IsA("BasePart") then return end
+    if obj.Name ~= "Torso_Hurtbox" then return end
+    if STATE.hurtboxSeen[obj] then return end
+    STATE.hurtboxSeen[obj] = true
+    pcall(function() obj.Size = CONFIG.HURTBOX_TARGET_SIZE end)
+end
+
+local function scanHurtboxes()
+    local entities = STATE.entitiesFolder
+    if not entities then
+        local ok, ent = pcall(function() return workspace:FindFirstChild("Entities") end)
+        if ok and ent then
+            entities = ent
+            STATE.entitiesFolder = ent
+        else
+            return
+        end
+    end
+    local ok, parent = pcall(function() return entities.Parent end)
+    if not ok or not parent then
+        STATE.entitiesFolder = nil
+        STATE.hurtboxSeen = {}
+        return
+    end
+    local ok2, descendants = pcall(function() return entities:GetDescendants() end)
+    if not ok2 or not descendants then return end
+    for _, obj in ipairs(descendants) do
+        processHurtbox(obj)
+    end
+end
+-- esp stuff
+
 local espObjects = {}
 
 local function healthColor(pct)
@@ -360,16 +432,24 @@ end
 local function removeESP(player)
     local data = espObjects[player]
     if data then
-        pcall(function() if data.hpText then data.hpText:Remove() end end)
-        pcall(function() if data.postureText then data.postureText:Remove() end end)
+        if data.hpText then
+            pcall(function() data.hpText.Visible = false end)
+            pcall(function() data.hpText:Remove() end)
+        end
+        if data.postureText then
+            pcall(function() data.postureText.Visible = false end)
+            pcall(function() data.postureText:Remove() end)
+        end
         espObjects[player] = nil
         healthCache[player] = nil
     end
 end
 
 local function updateESP()
+    if not STATE.espEnabled then return end
     local lp = getLocalPlayer()
     if not lp then return end
+    if not espObjects then return end
     for player, data in next, espObjects do
         if player == lp or isSelf(player) then
             data.hpText.Visible = false
@@ -433,6 +513,7 @@ end
 local lastPlayerList = {}
 
 local function updatePlayerList()
+    if not STATE.espEnabled then return end
     local lp = getLocalPlayer()
     if not lp then return end
     local ok, all = pcall(function() return game:GetService("Players"):GetPlayers() end)
@@ -459,14 +540,26 @@ local function doCleanup()
     running = false
     STATE.enabled = false
     STATE.currentTarget = nil
-    for p, d in next, espObjects do
-        pcall(function() if d.hpText then d.hpText:Remove() end end)
-        pcall(function() if d.postureText then d.postureText:Remove() end end)
+    if espObjects then
+        for p, d in next, espObjects do
+            if d then
+                if d.hpText then
+                    pcall(function() d.hpText.Visible = false end)
+                    pcall(function() d.hpText:Remove() end)
+                end
+                if d.postureText then
+                    pcall(function() data.postureText.Visible = false end)
+                    pcall(function() data.postureText:Remove() end)
+                end
+            end
+        end
     end
     espObjects = {}
     healthCache = {}
     cachedTargets = {}
     lastPlayerList = {}
+    STATE.hurtboxSeen = {}
+    STATE.entitiesFolder = nil
 end
 
 _G.VaultCleanup = doCleanup
@@ -500,6 +593,31 @@ local function playerPollLoop()
     end
 end
 
+local function hurtboxLoop()
+    task_wait(1)
+    while running do
+        pcall(scanHurtboxes)
+        task_wait(CONFIG.HURTBOX_SCAN_INTERVAL)
+    end
+end
+
+local function espFrameLoop()
+    while running do
+        local start = tick()
+        pcall(onFrame)
+        local elapsed = tick() - start
+        local sleep = 0.016 - elapsed
+        if sleep > 0 then task_wait(sleep) end
+        
+        local okP, curId = pcall(function() return game.PlaceId end)
+        local ok_pid, pid = pcall(function() return game.PlaceId end)
+        local lastPlaceId = ok_pid and pid or 0
+        if not okP or curId ~= lastPlaceId then doCleanup() break end
+        local okL, exists = pcall(function() return game:GetService("Players").LocalPlayer ~= nil end)
+        if not okL or not exists then doCleanup() break end
+    end
+end
+
 local function mainLoop()
     STATE.enabled = true
     STATE.currentTarget = nil
@@ -515,29 +633,22 @@ local function mainLoop()
     if ok and all then
         for _, p in ipairs(all) do
             if p ~= lp and not isSelf(p) then
-                createESP(p)
-                lastPlayerList[p] = true
+                if STATE.espEnabled then
+                    createESP(p)
+                    lastPlayerList[p] = true
+                end
             end
         end
     end
     if espObjects[lp] then removeESP(lp) end
     local ok_pid, pid = pcall(function() return game.PlaceId end)
     local lastPlaceId = ok_pid and pid or 0
-    task_spawn(function()
-        while running do
-            local start = tick()
-            pcall(onFrame)
-            local elapsed = tick() - start
-            local sleep = 0.016 - elapsed
-            if sleep > 0 then task_wait(sleep) end
-            local okP, curId = pcall(function() return game.PlaceId end)
-            if not okP or curId ~= lastPlaceId then doCleanup() break end
-            local okL, exists = pcall(function() return Players.LocalPlayer ~= nil end)
-            if not okL or not exists then doCleanup() break end
-        end
-    end)
+    
+    task_spawn(espFrameLoop)
     task_spawn(auraLoop)
     task_spawn(playerPollLoop)
+    task_spawn(hurtboxLoop)
+    
     for _ = 1, 50 do
         local char = getMyPosition()
         if char then break end
@@ -547,76 +658,4 @@ end
 
 pcall(mainLoop)
 
-notify("Vault", "Cutie Patootie", 7)
-
-local parryConfig = {
-    CastigateDelay = 0.45,
-    ScanInterval = 0.01,
-}
-
-local VK_F = 0x46
-local lastPressTick = 0
-local COOLDOWN = 0.3
-
-local function pressF(delay)
-    local now = tick()
-    if now - lastPressTick < COOLDOWN then return end
-    lastPressTick = now
-    task.spawn(function()
-        task.wait(delay)
-        keypress(VK_F)
-        task.wait(0.05)
-        keyrelease(VK_F)
-    end)
-end
-
-local seenCastigates = {}
-local castigateActive = false
-local parryEnabled = true
-local parryToggleDebounce = false
-
-local function onParryKeyPress(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.T then
-        if parryToggleDebounce then return end
-        parryToggleDebounce = true
-        parryEnabled = not parryEnabled
-        notify("Vault", "Auto Parry: " .. (parryEnabled and "ON" or "OFF"), 3)
-        task.wait(0.3)
-        parryToggleDebounce = false
-    end
-end
-
-UserInputService.InputBegan:Connect(onParryKeyPress)
-
-local function runLoop()
-    while true do
-        if not parryEnabled then task.wait(parryConfig.ScanInterval) continue end
-        local lp = game:GetService("Players").LocalPlayer
-        if not lp or not lp.PlayerGui then task.wait(parryConfig.ScanInterval) continue end
-        local visualEffects = lp.PlayerGui:FindFirstChild("VisualEffects")
-        if not visualEffects then task.wait(parryConfig.ScanInterval) continue end
-        local castigate = visualEffects:FindFirstChild("Cross")
-        local isNewCastigate = false
-        if castigate then
-            local addr = tostring(castigate.Address)
-            if not seenCastigates[addr] then
-                seenCastigates[addr] = tick()
-                isNewCastigate = true
-            end
-        end
-        if isNewCastigate and not castigateActive then
-            pressF(parryConfig.CastigateDelay)
-        end
-        castigateActive = isNewCastigate
-        local now = tick()
-        for addr, time in next, seenCastigates do
-            if now - time > 2 then
-                seenCastigates[addr] = nil
-            end
-        end
-        task.wait(parryConfig.ScanInterval)
-    end
-end
-
-task.spawn(runLoop)
+notify("Vault", "Cutie Patootie + Hurtbox", 7)
