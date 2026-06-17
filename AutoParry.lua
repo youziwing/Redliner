@@ -73,7 +73,7 @@ local CONFIG = {
 }
 
 local VK_F = 0x46
-local VK_R = 0x52
+local VK_T = 0x54
 local lastPressTick = 0
 local seenCastigates = {}
 local parriedCrosses = {}
@@ -529,7 +529,7 @@ local function tryParry(delay, addr, parriedTable)
     return false
 end
 
-local R_KEY_CODE = 18  -- Matcha Enum.KeyCode.R value
+local T_KEY_CODE = 20  -- Matcha Enum.KeyCode.R value
 local inputConnected = false
 
 local function doToggle()
@@ -554,7 +554,7 @@ pcall(function()
     if UIS and UIS.InputBegan then
         local conn = UIS.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed then return end
-            if input.KeyCode == R_KEY_CODE then
+            if input.KeyCode == T_KEY_CODE then
                 doToggle()
             end
         end)
@@ -563,15 +563,15 @@ pcall(function()
 end)
 
 -- Fallback: poll iskeypressed if event connection failed or is unavailable
-local wasRDown = false
+local wasTDown = false
 
-local function checkRToggle()
+local function checkTToggle()
     if inputConnected then return end
     local isDown = false
     pcall(function()
         -- Try global iskeypressed first
         if iskeypressed then
-            isDown = iskeypressed(0x52)
+            isDown = iskeypressed(0x54)
         end
     end)
     if not isDown then
@@ -583,18 +583,18 @@ local function checkRToggle()
             end
         end)
     end
-    if isDown and not wasRDown then
+    if isDown and not wasTDown then
         doToggle()
-        wasRDown = true
+        wasTDown = true
     elseif not isDown then
-        wasRDown = false
+        wasTDown = false
     end
 end
 
 local function parryLoop()
 
     while running do
-        checkRToggle()
+        checkTToggle()
         updateTargets()
 
         if CONFIG.AutoParryEnabled then
