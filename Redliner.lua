@@ -17,7 +17,7 @@ local Color3_fromRGB = Color3.fromRGB
 local Drawing_new = Drawing.new
 
 local CONFIG = {
-    AURA_RANGE = 25.8,
+    AURA_RANGE = 30,
     AURA_ANGLE = 180,
     AUTO_ATTACK = true,
     ATTACK_COOLDOWN = 0.15,
@@ -29,16 +29,14 @@ local CONFIG = {
     PARRY_VERIFY_TARGET = true,
     TOGGLE_KEY = "r",
     ESP_TOGGLE_KEY = "p",
-    -- ESP settings
     ESP = {
         Weapon = true,
     },
-    -- Hurtbox settings
+    ESP_RANGE = 300,
     HURTBOX_TARGET_SIZE = Vector3_new(13, 13, 13),
-    HURTBOX_SCAN_INTERVAL = 5, -- scan every 0.5s (not every frame!)
+    HURTBOX_SCAN_INTERVAL = 5,
 }
 
--- Weapon detection constants
 local KNOWN_WEAPONS = {"Castigate", "Phoenix", "Siege", "Monarch"}
 
 local STATE = {
@@ -48,7 +46,6 @@ local STATE = {
     targetsInRange = {},
     lastAuraUpdate = 0,
     espEnabled = true,
-    -- Hurtbox state
     hurtboxSeen = {},
     entitiesFolder = nil,
 }
@@ -60,7 +57,6 @@ local BLOCKED_PATTERNS = {
     "placeholder",
 }
 
--- Key input handling
 local UserInputService = game:GetService("UserInputService")
 local toggleDebounce = false
 local espToggleDebounce = false
@@ -151,7 +147,6 @@ local function isBlockedName(name)
     return false
 end
 
--- Weapon detection helper
 local function searchFolder(folder)
     if not folder then return nil end
     local ok, children = pcall(function() return folder:GetChildren() end)
@@ -425,7 +420,6 @@ local function scanHurtboxes()
         processHurtbox(obj)
     end
 end
--- esp stuff
 
 local espObjects = {}
 
@@ -475,6 +469,8 @@ local function createESP(player)
         weaponText = weapon,
         lastChar = nil,
         cachedMax = nil,
+        cachedWeapon = nil,
+        lastWeaponUpdate = 0,
         refs = { head = nil, root = nil },
     }
 end
@@ -504,6 +500,9 @@ local function updateESP()
     local lp = getLocalPlayer()
     if not lp then return end
     if not espObjects then return end
+    local myPos = getMyPosition()
+    local espRangeSq = CONFIG.ESP_RANGE * CONFIG.ESP_RANGE
+    local now = tick()
     for player, data in next, espObjects do
         if player == lp or isSelf(player) then
             data.hpText.Visible = false
@@ -517,6 +516,8 @@ local function updateESP()
         if char ~= data.lastChar then
             data.lastChar = char
             data.cachedMax = nil
+            data.cachedWeapon = nil
+            data.lastWeaponUpdate = 0
             if char then
                 local okH, head = pcall(function() return char:FindFirstChild("Head") end)
                 local okR, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
@@ -533,6 +534,15 @@ local function updateESP()
             data.postureText.Visible = false
             data.weaponText.Visible = false
             continue
+        end
+        if myPos and data.refs.root and CONFIG.ESP_RANGE > 0 then
+            local okRP, rootPos = pcall(function() return data.refs.root.Position end)
+            if okRP and rootPos and distanceSq(myPos, rootPos) > espRangeSq then
+                data.hpText.Visible = false
+                data.postureText.Visible = false
+                data.weaponText.Visible = false
+                continue
+            end
         end
         local ok, pos, onScreen = pcall(WorldToScreen, head.Position)
         if not ok or not onScreen or not pos then
@@ -566,8 +576,11 @@ local function updateESP()
             data.postureText.Visible = false
         end
         if CONFIG.ESP.Weapon then
-            local weaponName = getWeaponName(player, char)
-            data.weaponText.Text = weaponName
+            if not data.cachedWeapon or (now - data.lastWeaponUpdate > 1) then
+                data.cachedWeapon = getWeaponName(player, char)
+                data.lastWeaponUpdate = now
+            end
+            data.weaponText.Text = data.cachedWeapon
             data.weaponText.Position = wpPos
             data.weaponText.Visible = true
         else
