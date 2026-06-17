@@ -658,4 +658,4 @@ end
 
 pcall(mainLoop)
 
-notify("Vault", "Cutie Patootie + Hurtbox", 7)
+notify("Vault", "Cutie Patootie", 7)
