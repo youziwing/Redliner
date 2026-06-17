@@ -1,7 +1,3 @@
--- Matcha LuaVM — Look-Aware Auto Parry System v3
--- FEATURE: Dynamic LookAngleThreshold based on distance
--- Far enemies = tighter angle (harder to trigger), Close enemies = wider angle (easier to trigger)
-
 local function safeGet(name)
     local ok, svc = pcall(function() return game:GetService(name) end)
     if ok and svc then return svc end
@@ -15,19 +11,21 @@ end
 local Players = safeGet("Players")
 local RunService = safeGet("RunService")
 local Workspace = safeGet("Workspace")
+local ReplicatedStorage = safeGet("ReplicatedStorage")
 
-if not Workspace then print("[ERROR] Workspace nil") return end
-if not RunService then print("[ERROR] RunService nil") return end
-if not Players then print("[ERROR] Players nil") return end
+if not Workspace then return end
+if not RunService then return end
+if not Players then return end
+if not ReplicatedStorage then return end
 
 local Camera = nil
 local ok_cam, camResult = pcall(function() return Workspace.CurrentCamera end)
-if ok_cam and camResult then Camera = camResult else print("[ERROR] Camera nil") return end
+if ok_cam and camResult then Camera = camResult else return end
 
 local LocalPlayer = nil
 local ok_lp, lp = pcall(function() return Players.LocalPlayer end)
 if ok_lp and lp then LocalPlayer = lp end
-if not LocalPlayer then print("[ERROR] LocalPlayer nil") return end
+if not LocalPlayer then return end
 
 local math_floor = math.floor
 local math_sqrt = math.sqrt
@@ -47,10 +45,12 @@ local task_spawn = task.spawn
 
 local CONFIG = {
     CastigateDelay = 0.45,
+    MonarchDelay = 1.5,
     ScanInterval = 0.01,
     MaxParryDistance = 500,
     ParryCooldown = 0.3,
     CrossMemoryTimeout = 3,
+    GlareMemoryTimeout = 3,
     JitterRange = 0.02,
     MaxDistance = 500,
     LineLength = 8,
@@ -61,28 +61,58 @@ local CONFIG = {
     ShowDistance = true,
     EntitiesFolderName = "Entities",
     HeadName = "Head",
+    TorsoName = "HumanoidRootPart",
     SelfName = LocalPlayer and LocalPlayer.Name or nil,
-    
-    -- Dynamic Angle Config
     AngleCloseDist = 20,
     AngleFarDist = 50,
-    AngleClose = 19,
-    AngleFar = 10,
+    AngleClose = 15,
+    AngleFar = 7,
+    CrossEnabled = true,
+    GlareEnabled = true,
+    AutoParryEnabled = true,
 }
 
 local VK_F = 0x46
+local VK_R = 0x52
 local lastPressTick = 0
 local seenCastigates = {}
 local parriedCrosses = {}
+local seenGlares = {}
+local parriedGlares = {}
 local currentCrossAddr = nil
+local currentGlareAddr = nil
 local running = true
+local toggleDebounce = false
 
 local Pool = {lines = {}, texts = {}, dots = {}, active = {}}
 local Targets = {}
 
+local STATIC_GLARE_ADDR = nil
+
+local function initStaticGlareAddr()
+    local ok, assets = pcall(function() return ReplicatedStorage:FindFirstChild("Assets", true) end)
+    if not ok or not assets then return end
+    local ok2, effectAssets = pcall(function() return assets:FindFirstChild("EffectAssets", true) end)
+    if not ok2 or not effectAssets then return end
+    local ok3, monarchGlare = pcall(function() return effectAssets:FindFirstChild("MonarchGlare") end)
+    if ok3 and monarchGlare then
+        local ok4, addr = pcall(function() return monarchGlare.Address end)
+        if ok4 and addr then
+            STATIC_GLARE_ADDR = addr
+        end
+    end
+end
+
 local function safeFindFirstChild(parent, name)
     if not parent then return nil end
     local ok, child = pcall(function() return parent:FindFirstChild(name) end)
+    if ok and child then return child end
+    return nil
+end
+
+local function safeFindFirstChildTrue(parent, name)
+    if not parent then return nil end
+    local ok, child = pcall(function() return parent:FindFirstChild(name, true) end)
     if ok and child then return child end
     return nil
 end
@@ -135,50 +165,46 @@ local function isSelf(target)
     return safeGetName(target) == CONFIG.SelfName
 end
 
-local function findHead(model)
+local function findPart(model, name)
+    if not model then return nil end
+    local part = safeFindFirstChild(model, name)
+    if part then return part end
+    return nil
+end
+
+local function getLivePartData(model, partName)
     if not model then return nil, nil end
-    local head = safeFindFirstChild(model, CONFIG.HeadName)
-    if head then
-        local pos = safeGetPosition(head)
-        if pos then return head, pos end
-    end
-    local nestedPaths = {
-        {"Mesh", "Head"},
-        {"Model", "Head"},
-        {"Character", "Head"},
-        {"Body", "Head"},
-        {"UpperTorso", "Head"},
-        {"Torso", "Head"},
-    }
-    for _, path in next, nestedPaths do
-        local current = model
-        local found = true
-        for _, name in next, path do
-            current = safeFindFirstChild(current, name)
-            if not current then found = false break end
-        end
-        if found and current then
-            local pos = safeGetPosition(current)
-            if pos then return current, pos end
-        end
-    end
-    local descendants = safeGetDescendants(model)
-    for _, child in next, descendants do
-        local name = safeGetName(child)
-        if name:find("Head") or name:find("head") then
-            local pos = safeGetPosition(child)
-            if pos then return child, pos end
-        end
+    local part = findPart(model, partName)
+    if not part then return nil, nil end
+    local pos = safeGetPosition(part)
+    local cf = safeGetCFrame(part)
+    if not pos or not cf then return nil, nil end
+    local lookVec = safeGetLookVector(cf)
+    if not lookVec then return nil, nil end
+    return pos, lookVec
+end
+
+local function getLiveHeadData(model)
+    return getLivePartData(model, CONFIG.HeadName)
+end
+
+local function getLiveTorsoData(model)
+    local pos, lookVec = getLivePartData(model, CONFIG.TorsoName)
+    if pos and lookVec then return pos, lookVec end
+    local fallbackNames = {"UpperTorso", "Torso", "LowerTorso", "Body"}
+    for _, name in next, fallbackNames do
+        pos, lookVec = getLivePartData(model, name)
+        if pos and lookVec then return pos, lookVec end
     end
     return nil, nil
 end
 
-local function getLook(model)
-    local head, _ = findHead(model)
-    if not head then return nil end
-    local cf = safeGetCFrame(head)
-    if not cf then return nil end
-    return safeGetLookVector(cf)
+local function getBestAttackData(model)
+    local torsoPos, torsoLook = getLiveTorsoData(model)
+    if torsoPos and torsoLook then
+        return torsoPos, torsoLook
+    end
+    return getLiveHeadData(model)
 end
 
 local function dist3D(a, b)
@@ -204,14 +230,7 @@ local function updateTargets()
                 local key = getKey(entity)
                 current[key] = true
                 if not Targets[key] then
-                    Targets[key] = {target = entity, lastPos = nil, head = nil, lookVec = nil}
-                end
-                local data = Targets[key]
-                local head, pos = findHead(entity)
-                if pos then
-                    data.lastPos = pos
-                    data.head = head
-                    data.lookVec = getLook(entity)
+                    Targets[key] = {target = entity}
                 end
             end
         end
@@ -270,18 +289,16 @@ end
 local function renderVisualizer()
     local camPos = safeGetPosition(Camera)
     if not camPos then return end
-    
+
     for key, data in next, Targets do
         local target = data.target
         local shouldDraw = true
-        
-        if not target or not data.lastPos then
+
+        if not target then
             shouldDraw = false
         else
-            local pos = data.lastPos
-            local lookVec = data.lookVec
-            
-            if not lookVec then
+            local pos, lookVec = getLiveHeadData(target)
+            if not pos or not lookVec then
                 shouldDraw = false
             else
                 local dist = dist3D(camPos, pos)
@@ -291,7 +308,7 @@ local function renderVisualizer()
                     local endPos = pos + (lookVec * CONFIG.LineLength)
                     local ss, onScreen1 = safeWTS(pos)
                     local se, onScreen2 = safeWTS(endPos)
-                    
+
                     if not ss or not se or not onScreen1 or not onScreen2 then
                         shouldDraw = false
                     else
@@ -303,7 +320,7 @@ local function renderVisualizer()
                             thick = CONFIG.LineThickness * alpha
                             if thick < 0.5 then thick = 0.5 end
                         end
-                        
+
                         local line = getDraw("Line", Pool.lines, key)
                         if line then
                             line.From = ss
@@ -312,7 +329,7 @@ local function renderVisualizer()
                             line.Transparency = alpha * CONFIG.LineTransparency
                             line.Visible = true
                         end
-                        
+
                         local dot = getDraw("Circle", Pool.dots, key)
                         if dot then
                             dot.Position = se
@@ -320,7 +337,7 @@ local function renderVisualizer()
                             dot.Transparency = alpha * 0.8
                             dot.Visible = true
                         end
-                        
+
                         if CONFIG.ShowNames or CONFIG.ShowDistance then
                             local text = getDraw("Text", Pool.texts, key)
                             if text then
@@ -337,18 +354,18 @@ local function renderVisualizer()
                                 text.Visible = true
                             end
                         end
-                        
+
                         Pool.active[key] = true
                     end
                 end
             end
         end
-        
+
         if not shouldDraw then
             hide(key)
         end
     end
-    
+
     for key in next, Pool.lines do
         if not Pool.active[key] then
             hide(key)
@@ -367,59 +384,73 @@ local function getDynamicAngleThreshold(dist)
 end
 
 local function isEnemyLookingAtMe(enemyPos, enemyLookVec)
-    if not enemyPos or not enemyLookVec then return false, 180, 0, 0 end
+    if not enemyPos or not enemyLookVec then return false, 180, 0 end
     local myChar = LocalPlayer.Character
-    if not myChar then return false, 180, 0, 0 end
+    if not myChar then return false, 180, 0 end
     local myHead = safeFindFirstChild(myChar, CONFIG.HeadName)
-    if not myHead then return false, 180, 0, 0 end
+    if not myHead then return false, 180, 0 end
     local myPos = safeGetPosition(myHead)
-    if not myPos then return false, 180, 0, 0 end
-    
+    if not myPos then return false, 180, 0 end
+
     local dist = dist3D(enemyPos, myPos)
-    if dist > CONFIG.MaxParryDistance then return false, 180, dist, 0 end
-    
+    if dist > CONFIG.MaxParryDistance then return false, 180, dist end
+
     local toMe = (myPos - enemyPos).Unit
     local dot = enemyLookVec.X * toMe.X + enemyLookVec.Y * toMe.Y + enemyLookVec.Z * toMe.Z
     dot = math_abs(dot)
     if dot > 1 then dot = 1 end
     if dot < -1 then dot = -1 end
-    
+
     local angle = math_deg(math_acos(dot))
     local threshold = getDynamicAngleThreshold(dist)
-    
-    return angle < threshold, angle, dist, threshold
+
+    return angle < threshold, angle, dist
 end
 
-local function findClosestThreat()
+local function findClosestEnemy()
+    local myChar = LocalPlayer.Character
+    if not myChar then return nil, math.huge, false end
+    local myHead = safeFindFirstChild(myChar, CONFIG.HeadName)
+    if not myHead then return nil, math.huge, false end
+    local myPos = safeGetPosition(myHead)
+    if not myPos then return nil, math.huge, false end
+
     local closestDist = math.huge
     local closestKey = nil
-    local closestAngle = 180
-    local closestThreshold = 0
-    
+    local closestIsFacing = false
+
     for key, data in next, Targets do
-        if data.lastPos and data.lookVec then
-            local isLooking, angle, dist, threshold = isEnemyLookingAtMe(data.lastPos, data.lookVec)
-            if isLooking and dist < closestDist then
+        if not data.target then continue end
+
+        local pos, lookVec = getBestAttackData(data.target)
+        if pos then
+            local dist = dist3D(myPos, pos)
+            if dist < closestDist and dist <= CONFIG.MaxParryDistance then
                 closestDist = dist
                 closestKey = key
-                closestAngle = angle
-                closestThreshold = threshold
+
+                if lookVec then
+                    local isFacing, _, _ = isEnemyLookingAtMe(pos, lookVec)
+                    closestIsFacing = isFacing
+                end
             end
         end
     end
-    
-    return closestKey, closestDist, closestAngle, closestThreshold
+
+    return closestKey, closestDist, closestIsFacing
 end
 
 local function pressF(delay)
+    if not CONFIG.AutoParryEnabled then return false end
+
     local now = tick()
     if now - lastPressTick < CONFIG.ParryCooldown then return false end
     lastPressTick = now
-    
+
     local jitter = (math_random() * CONFIG.JitterRange * 2) - CONFIG.JitterRange
     local actualDelay = delay + jitter
     if actualDelay < 0 then actualDelay = 0 end
-    
+
     task_spawn(function()
         task_wait(actualDelay)
         pcall(function()
@@ -428,21 +459,37 @@ local function pressF(delay)
             keyrelease(VK_F)
         end)
     end)
-    
+
     return true
 end
 
 local function getCurrentCross()
     local lp = LocalPlayer
     if not lp or not lp.PlayerGui then return nil end
-    
-    local visualEffects = lp.PlayerGui:FindFirstChild("VisualEffects")
+
+    local visualEffects = safeFindFirstChild(lp.PlayerGui, "VisualEffects")
     if not visualEffects then return nil end
-    
-    local castigate = visualEffects:FindFirstChild("Cross")
+
+    local castigate = safeFindFirstChild(visualEffects, "Cross")
     if not castigate then return nil end
-    
+
     return tostring(castigate.Address)
+end
+
+local function getCurrentGlare()
+    local lp = LocalPlayer
+    if not lp or not lp.PlayerGui then return nil end
+
+    local visualEffects = safeFindFirstChildTrue(lp.PlayerGui, "VisualEffects")
+    if not visualEffects then return nil end
+
+    local glare = safeFindFirstChild(visualEffects, "MonarchGlare")
+    if not glare then return nil end
+
+    local addr = tostring(glare.Address)
+    if STATIC_GLARE_ADDR and addr == STATIC_GLARE_ADDR then return nil end
+
+    return addr
 end
 
 local function cleanupOldEntries()
@@ -453,36 +500,137 @@ local function cleanupOldEntries()
             parriedCrosses[addr] = nil
         end
     end
+    for addr, time in next, seenGlares do
+        if now - time > CONFIG.GlareMemoryTimeout then
+            seenGlares[addr] = nil
+            parriedGlares[addr] = nil
+        end
+    end
+end
+
+local function tryParry(delay, addr, parriedTable)
+    if not CONFIG.AutoParryEnabled then return false end
+
+    local threatKey, threatDist, isFacing = findClosestEnemy()
+
+    if threatKey then
+        local actualDelay = delay
+        if isFacing then
+            actualDelay = delay * 0.85
+        end
+
+        local didParry = pressF(actualDelay)
+        if didParry then
+            parriedTable[addr] = true
+            return true
+        end
+    end
+
+    return false
+end
+
+local R_KEY_CODE = 18  -- Matcha Enum.KeyCode.R value
+local inputConnected = false
+
+local function doToggle()
+    if toggleDebounce then return end
+    toggleDebounce = true
+    CONFIG.AutoParryEnabled = not CONFIG.AutoParryEnabled
+    local msg = "Auto Parry: " .. (CONFIG.AutoParryEnabled and "ON" or "OFF")
+    if CONFIG.AutoParryEnabled then
+        if CONFIG.CrossEnabled then msg = msg .. " | Catigate: ON" end
+        if CONFIG.GlareEnabled then msg = msg .. " | Monarch: ON" end
+    end
+    pcall(function() notify("Auto Parry", msg, 3) end)
+    task_spawn(function()
+        task_wait(0.3)
+        toggleDebounce = false
+    end)
+end
+
+-- Try event-based input first (safely wrapped)
+pcall(function()
+    local UIS = game:GetService("UserInputService")
+    if UIS and UIS.InputBegan then
+        local conn = UIS.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.KeyCode == R_KEY_CODE then
+                doToggle()
+            end
+        end)
+        if conn then inputConnected = true end
+    end
+end)
+
+-- Fallback: poll iskeypressed if event connection failed or is unavailable
+local wasRDown = false
+
+local function checkRToggle()
+    if inputConnected then return end
+    local isDown = false
+    pcall(function()
+        -- Try global iskeypressed first
+        if iskeypressed then
+            isDown = iskeypressed(0x52)
+        end
+    end)
+    if not isDown then
+        pcall(function()
+            -- Fallback: try UIS:IsKeyDown with raw number
+            local UIS = game:GetService("UserInputService")
+            if UIS and UIS.IsKeyDown then
+                isDown = UIS:IsKeyDown(R_KEY_CODE)
+            end
+        end)
+    end
+    if isDown and not wasRDown then
+        doToggle()
+        wasRDown = true
+    elseif not isDown then
+        wasRDown = false
+    end
 end
 
 local function parryLoop()
+
     while running do
-        local crossAddr = getCurrentCross()
-        
-        if crossAddr then
+        checkRToggle()
+        updateTargets()
+
+        if CONFIG.AutoParryEnabled then
+            local crossAddr = getCurrentCross()
+            local glareAddr = getCurrentGlare()
             local now = tick()
-            
-            if not seenCastigates[crossAddr] then
-                seenCastigates[crossAddr] = now
-            end
-            
-            if not parriedCrosses[crossAddr] then
-                updateTargets()
-                local threatKey, threatDist, threatAngle, threatThreshold = findClosestThreat()
-                
-                if threatKey then
-                    local didParry = pressF(CONFIG.CastigateDelay)
-                    if didParry then
-                        parriedCrosses[crossAddr] = true
-                    end
+
+            if crossAddr and CONFIG.CrossEnabled then
+                if not seenCastigates[crossAddr] then
+                    seenCastigates[crossAddr] = now
                 end
+
+                if not parriedCrosses[crossAddr] then
+                    tryParry(CONFIG.CastigateDelay, crossAddr, parriedCrosses)
+                end
+
+                currentCrossAddr = crossAddr
+            else
+                currentCrossAddr = nil
             end
-            
-            currentCrossAddr = crossAddr
-        else
-            currentCrossAddr = nil
+
+            if glareAddr and CONFIG.GlareEnabled then
+                if not seenGlares[glareAddr] then
+                    seenGlares[glareAddr] = now
+                end
+
+                if not parriedGlares[glareAddr] then
+                    tryParry(CONFIG.MonarchDelay, glareAddr, parriedGlares)
+                end
+
+                currentGlareAddr = glareAddr
+            else
+                currentGlareAddr = nil
+            end
         end
-        
+
         cleanupOldEntries()
         task_wait(CONFIG.ScanInterval)
     end
@@ -496,6 +644,47 @@ local function visualLoop()
     end
 end
 
+local function buildMatchaUI()
+    local ok, UI = pcall(function() return _G.UI end)
+    if not ok or not UI then
+        ok, UI = pcall(function() return getgenv().UI end)
+    end
+    if not ok or not UI then
+        ok, UI = pcall(function() return shared.UI end)
+    end
+    if not ok or not UI then return end
+
+    pcall(function()
+        UI.AddTab("Auto Parry", function(tab)
+            local sec = tab:Section("Toggles", "Left")
+
+            sec:Toggle("catigate_toggle", "Catigate", CONFIG.CrossEnabled, function(state)
+                CONFIG.CrossEnabled = state
+            end)
+
+            sec:Toggle("monarch_toggle", "Monarch", CONFIG.GlareEnabled, function(state)
+                CONFIG.GlareEnabled = state
+            end)
+
+            local secDelays = tab:Section("Delays", "Right")
+
+            secDelays:SliderFloat("castigate_delay", "Catigate Delay", 0.01, 2.0, CONFIG.CastigateDelay, "%.2f", function(val)
+                CONFIG.CastigateDelay = val
+            end)
+
+            secDelays:SliderFloat("monarch_delay", "Monarch Delay", 0.1, 3.0, CONFIG.MonarchDelay, "%.2f", function(val)
+                CONFIG.MonarchDelay = val
+            end)
+
+            secDelays:SliderFloat("parry_cooldown", "Parry Cooldown", 0.05, 1.0, CONFIG.ParryCooldown, "%.2f", function(val)
+                CONFIG.ParryCooldown = val
+            end)
+        end)
+    end)
+end
+
+initStaticGlareAddr()
+buildMatchaUI()
 task_spawn(parryLoop)
 task_spawn(visualLoop)
 
@@ -513,11 +702,12 @@ _G.LookParryCleanup = function()
     Targets = {}
     seenCastigates = {}
     parriedCrosses = {}
+    seenGlares = {}
+    parriedGlares = {}
     currentCrossAddr = nil
+    currentGlareAddr = nil
     lastPressTick = 0
+    CONFIG.AutoParryEnabled = true
 end
 
-print("[Look Parry v3] Loaded — Dynamic angle scaling active")
-print("[Look Parry v3] Close (" .. CONFIG.AngleCloseDist .. "m): " .. CONFIG.AngleClose .. "°")
-print("[Look Parry v3] Far (" .. CONFIG.AngleFarDist .. "m): " .. CONFIG.AngleFar .. "°")
-print("[Look Parry v3] Call _G.LookParryCleanup() to stop")
+print("Auto Parry Loaded")
