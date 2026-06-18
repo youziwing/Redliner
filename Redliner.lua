@@ -29,6 +29,7 @@ local CONFIG = {
     PARRY_VERIFY_TARGET = true,
     TOGGLE_KEY = "r",
     ESP_TOGGLE_KEY = "p",
+    HITBOX_TOGGLE_KEY = "h", -- NEW: key to cycle hitbox size
     ESP = {
         Weapon = true,
     },
@@ -48,6 +49,7 @@ local STATE = {
     espEnabled = true,
     hurtboxSeen = {},
     entitiesFolder = nil,
+    hitboxLarge = true, -- NEW: true = 13,13,13 | false = 8,8,8
 }
 
 local BLOCKED_PATTERNS = {
@@ -60,6 +62,7 @@ local BLOCKED_PATTERNS = {
 local UserInputService = game:GetService("UserInputService")
 local toggleDebounce = false
 local espToggleDebounce = false
+local hitboxToggleDebounce = false -- NEW: debounce for H key
 
 local function onKeyPress(input, gameProcessed)
     if gameProcessed then return end
@@ -104,6 +107,24 @@ local function onKeyPress(input, gameProcessed)
         end
         task_wait(0.3)
         espToggleDebounce = false
+    end
+    -- NEW: Hitbox size toggle
+    if input.KeyCode == Enum.KeyCode[CONFIG.HITBOX_TOGGLE_KEY:upper()] then
+        if hitboxToggleDebounce then return end
+        hitboxToggleDebounce = true
+        STATE.hitboxLarge = not STATE.hitboxLarge
+        if STATE.hitboxLarge then
+            CONFIG.HURTBOX_TARGET_SIZE = Vector3_new(13, 13, 13)
+            notify("Vault", "Hitbox: LARGE (13,13,13)", 3)
+        else
+            CONFIG.HURTBOX_TARGET_SIZE = Vector3_new(8, 8, 8)
+            notify("Vault", "Hitbox: SMALL (8,8,8)", 3)
+        end
+        -- Clear seen cache so existing hurtboxes are resized immediately
+        STATE.hurtboxSeen = {}
+        pcall(scanHurtboxes)
+        task_wait(0.3)
+        hitboxToggleDebounce = false
     end
 end
 
