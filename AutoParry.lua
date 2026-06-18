@@ -64,17 +64,41 @@ local CONFIG = {
     HeadName = "Head",
     TorsoName = "HumanoidRootPart",
     SelfName = LocalPlayer and LocalPlayer.Name or nil,
-    
-    -- Wider angles for more reliable detection
     AngleCloseDist = 20,
     AngleFarDist = 50,
-    AngleClose = 23,
-    AngleFar = 10,
-    
+    AngleClose = 35,
+    AngleFar = 20,
     CrossEnabled = true,
     GlareEnabled = true,
     AutoParryEnabled = true,
     DEBUG = false,
+    
+    Human = {
+        MissChance = 0.08,
+        MissDelay = 0.12,
+        ReactionMin = 0.04,
+        ReactionMax = 0.11,
+        PanicChance = 0.03,
+        PanicDelay = 0.25,
+        PanicDoubleTap = 0.08,
+        LateParryChance = 0.06,
+        LateParryDelay = 0.18,
+        EarlyParryChance = 0.05,
+        EarlyParryDelay = 0.06,
+        StaggerMin = 0.5,
+        StaggerMax = 1.8,
+        StaggerCooldown = 4,
+        FumbleChance = 0.04,
+        FumbleDuration = 0.35,
+        ConfidenceBuild = 0.02,
+        ConfidenceDecay = 0.015,
+        MaxConfidence = 1.0,
+        MinConfidence = 0.3,
+        ReadDelayMin = 0.02,
+        ReadDelayMax = 0.07,
+        HesitateChance = 0.07,
+        HesitateDuration = 0.15,
+    },
 }
 
 local VK_F = 0x46
@@ -93,6 +117,20 @@ local Pool = {lines = {}, texts = {}, dots = {}, active = {}}
 local Targets = {}
 
 local STATIC_GLARE_ADDR = nil
+
+local humanState = {
+    confidence = 0.6,
+    lastStagger = 0,
+    lastFumble = 0,
+    consecutiveParries = 0,
+    lastParryTime = 0,
+    inHesitation = false,
+    hesitationEnd = 0,
+    panicMode = false,
+    panicEnd = 0,
+    reading = false,
+    readEnd = 0,
+}
 
 local function initStaticGlareAddr()
     local ok, assets = pcall(function() return ReplicatedStorage:FindFirstChild("Assets", true) end)
@@ -204,7 +242,6 @@ local function getLiveTorsoData(model)
     return nil, nil
 end
 
--- FIX: Use head look vector for accurate facing detection
 local function getBestAttackData(model)
     local headPos, headLook = getLiveHeadData(model)
     if headPos and headLook then
@@ -389,7 +426,6 @@ local function getDynamicAngleThreshold(dist)
     return angle
 end
 
--- FIX: Removed math_abs from dot product
 local function isEnemyLookingAtMe(enemyPos, enemyLookVec, maxDist)
     if not enemyPos or not enemyLookVec then return false, 180, 0 end
     local myChar = LocalPlayer.Character
@@ -405,13 +441,9 @@ local function isEnemyLookingAtMe(enemyPos, enemyLookVec, maxDist)
     local toMe = (myPos - enemyPos).Unit
     local dot = enemyLookVec.X * toMe.X + enemyLookVec.Y * toMe.Y + enemyLookVec.Z * toMe.Z
     
-    -- REMOVED: dot = math_abs(dot)
-    -- Now dot > 0 = facing toward you, dot < 0 = facing away
-    
     if dot > 1 then dot = 1 end
     if dot < -1 then dot = -1 end
 
-    -- Must be facing toward you
     if dot <= 0 then 
         if CONFIG.DEBUG then print("[Vault] AngleCheck | dot=" .. string.format("%.3f", dot) .. " | FACING AWAY") end
         return false, 90, dist 
@@ -460,15 +492,116 @@ local function findClosestEnemy(maxDist)
     return closestKey, closestDist, closestIsFacing
 end
 
+local function updateHumanState(didParry)
+    local now = tick()
+    local h = CONFIG.Human
+    
+    if didParry then
+        humanState.consecutiveParries = humanState.consecutiveParries + 1
+        humanState.lastParryTime = now
+        humanState.confidence = math_clamp(humanState.confidence + h.ConfidenceBuild, h.MinConfidence, h.MaxConfidence)
+    else
+        humanState.consecutiveParries = 0
+        humanState.confidence = math_clamp(humanState.confidence - h.ConfidenceDecay, h.MinConfidence, h.MaxConfidence)
+    end
+    
+    if humanState.panicMode and now > humanState.panicEnd then
+        humanState.panicMode = false
+    end
+    
+    if humanState.inHesitation and now > humanState.hesitationEnd then
+        humanState.inHesitation = false
+    end
+    
+    if humanState.reading and now > humanState.readEnd then
+        humanState.reading = false
+    end
+end
+
+local function getHumanizedDelay(baseDelay)
+    local h = CONFIG.Human
+    local now = tick()
+    local adjustedDelay = baseDelay
+    
+    if humanState.inHesitation then
+        return nil
+    end
+    
+    if humanState.reading then
+        return nil
+    end
+    
+    if humanState.panicMode then
+        if math_random() < 0.5 then
+            adjustedDelay = adjustedDelay + h.PanicDelay
+        end
+    end
+    
+    local reactionVar = h.ReactionMin + math_random() * (h.ReactionMax - h.ReactionMin)
+    adjustedDelay = adjustedDelay + reactionVar
+    
+    if math_random() < h.MissChance * (1.5 - humanState.confidence) then
+        adjustedDelay = adjustedDelay + h.MissDelay
+        if CONFIG.DEBUG then print("[Vault] Human: Missed timing") end
+    end
+    
+    if math_random() < h.LateParryChance then
+        adjustedDelay = adjustedDelay + h.LateParryDelay
+        if CONFIG.DEBUG then print("[Vault] Human: Late parry") end
+    end
+    
+    if math_random() < h.EarlyParryChance then
+        adjustedDelay = math_max(0.01, adjustedDelay - h.EarlyParryDelay)
+        if CONFIG.DEBUG then print("[Vault] Human: Early parry") end
+    end
+    
+    if math_random() < h.HesitateChance * (1.3 - humanState.confidence) then
+        humanState.inHesitation = true
+        humanState.hesitationEnd = now + h.HesitateDuration
+        if CONFIG.DEBUG then print("[Vault] Human: Hesitation") end
+        return nil
+    end
+    
+    local timeSinceLast = now - humanState.lastParryTime
+    if humanState.consecutiveParries >= 3 and timeSinceLast < h.StaggerCooldown then
+        if math_random() < 0.4 then
+            local stagger = h.StaggerMin + math_random() * (h.StaggerMax - h.StaggerMin)
+            humanState.lastStagger = now
+            adjustedDelay = adjustedDelay + stagger
+            humanState.consecutiveParries = 0
+            if CONFIG.DEBUG then print("[Vault] Human: Staggered") end
+        end
+    end
+    
+    if now - humanState.lastFumble > 8 and math_random() < h.FumbleChance then
+        humanState.lastFumble = now
+        adjustedDelay = adjustedDelay + h.FumbleDuration
+        if CONFIG.DEBUG then print("[Vault] Human: Fumbled") end
+    end
+    
+    if math_random() < h.PanicChance and timeSinceLast < 1.5 then
+        humanState.panicMode = true
+        humanState.panicEnd = now + 1.2
+        if CONFIG.DEBUG then print("[Vault] Human: Panic mode") end
+    end
+    
+    return adjustedDelay
+end
+
 local function pressF(delay)
     if not CONFIG.AutoParryEnabled then return false end
 
     local now = tick()
     if now - lastPressTick < CONFIG.ParryCooldown then return false end
+    
+    local humanDelay = getHumanizedDelay(delay)
+    if not humanDelay then return false end
+    
     lastPressTick = now
+    updateHumanState(true)
 
     local jitter = (math_random() * CONFIG.JitterRange * 2) - CONFIG.JitterRange
-    local actualDelay = delay + jitter
+    local actualDelay = humanDelay + jitter
     if actualDelay < 0 then actualDelay = 0 end
 
     if CONFIG.DEBUG then
@@ -730,6 +863,19 @@ _G.LookParryCleanup = function()
     currentGlareAddr = nil
     lastPressTick = 0
     CONFIG.AutoParryEnabled = true
+    humanState = {
+        confidence = 0.6,
+        lastStagger = 0,
+        lastFumble = 0,
+        consecutiveParries = 0,
+        lastParryTime = 0,
+        inHesitation = false,
+        hesitationEnd = 0,
+        panicMode = false,
+        panicEnd = 0,
+        reading = false,
+        readEnd = 0,
+    }
 end
 
 print("Auto Parry Loaded")
