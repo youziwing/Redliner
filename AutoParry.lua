@@ -45,9 +45,10 @@ local task_spawn = task.spawn
 
 local CONFIG = {
     CastigateDelay = 0.45,
-    MonarchDelay = 1.5,
+    MonarchDelay = 1.2,
     ScanInterval = 0.01,
-    MaxParryDistance = 500,
+    CastigateMaxDist = 500,
+    MonarchMaxDist = 50,
     ParryCooldown = 0.3,
     CrossMemoryTimeout = 3,
     GlareMemoryTimeout = 3,
@@ -70,6 +71,7 @@ local CONFIG = {
     CrossEnabled = true,
     GlareEnabled = true,
     AutoParryEnabled = true,
+    DEBUG = false,
 }
 
 local VK_F = 0x46
@@ -383,7 +385,7 @@ local function getDynamicAngleThreshold(dist)
     return angle
 end
 
-local function isEnemyLookingAtMe(enemyPos, enemyLookVec)
+local function isEnemyLookingAtMe(enemyPos, enemyLookVec, maxDist)
     if not enemyPos or not enemyLookVec then return false, 180, 0 end
     local myChar = LocalPlayer.Character
     if not myChar then return false, 180, 0 end
@@ -393,7 +395,7 @@ local function isEnemyLookingAtMe(enemyPos, enemyLookVec)
     if not myPos then return false, 180, 0 end
 
     local dist = dist3D(enemyPos, myPos)
-    if dist > CONFIG.MaxParryDistance then return false, 180, dist end
+    if dist > maxDist then return false, 180, dist end
 
     local toMe = (myPos - enemyPos).Unit
     local dot = enemyLookVec.X * toMe.X + enemyLookVec.Y * toMe.Y + enemyLookVec.Z * toMe.Z
@@ -407,7 +409,7 @@ local function isEnemyLookingAtMe(enemyPos, enemyLookVec)
     return angle < threshold, angle, dist
 end
 
-local function findClosestEnemy()
+local function findClosestEnemy(maxDist)
     local myChar = LocalPlayer.Character
     if not myChar then return nil, math.huge, false end
     local myHead = safeFindFirstChild(myChar, CONFIG.HeadName)
@@ -425,12 +427,12 @@ local function findClosestEnemy()
         local pos, lookVec = getBestAttackData(data.target)
         if pos then
             local dist = dist3D(myPos, pos)
-            if dist < closestDist and dist <= CONFIG.MaxParryDistance then
+            if dist < closestDist and dist <= maxDist then
                 closestDist = dist
                 closestKey = key
 
                 if lookVec then
-                    local isFacing, _, _ = isEnemyLookingAtMe(pos, lookVec)
+                    local isFacing, _, _ = isEnemyLookingAtMe(pos, lookVec, maxDist)
                     closestIsFacing = isFacing
                 end
             end
@@ -450,6 +452,10 @@ local function pressF(delay)
     local jitter = (math_random() * CONFIG.JitterRange * 2) - CONFIG.JitterRange
     local actualDelay = delay + jitter
     if actualDelay < 0 then actualDelay = 0 end
+
+    if CONFIG.DEBUG then
+        print("[Vault] Parry in " .. string.format("%.3f", actualDelay) .. "s")
+    end
 
     task_spawn(function()
         task_wait(actualDelay)
@@ -508,10 +514,10 @@ local function cleanupOldEntries()
     end
 end
 
-local function tryParry(delay, addr, parriedTable)
+local function tryParry(delay, maxDist, addr, parriedTable)
     if not CONFIG.AutoParryEnabled then return false end
 
-    local threatKey, threatDist, isFacing = findClosestEnemy()
+    local threatKey, threatDist, isFacing = findClosestEnemy(maxDist)
 
     if threatKey then
         local actualDelay = delay
@@ -519,71 +525,80 @@ local function tryParry(delay, addr, parriedTable)
             actualDelay = delay * 0.85
         end
 
+        if CONFIG.DEBUG then
+            print("[Vault] tryParry | dist=" .. math_floor(threatDist) .. " | facing=" .. tostring(isFacing) .. " | delay=" .. string.format("%.3f", actualDelay))
+        end
+
         local didParry = pressF(actualDelay)
         if didParry then
             parriedTable[addr] = true
             return true
         end
+    elseif CONFIG.DEBUG then
+        print("[Vault] tryParry | no threat in range (max=" .. maxDist .. ")")
     end
 
     return false
 end
 
-local T_KEY_CODE = 20  -- Matcha Enum.KeyCode.R value
-local inputConnected = false
+-- ============================================
+-- TOGGLE SYSTEM — Fixed for Matcha
+-- ============================================
 
 local function doToggle()
-    if toggleDebounce then return end
+    if toggleDebounce then
+        if CONFIG.DEBUG then print("[Vault] Toggle debounced") end
+        return
+    end
     toggleDebounce = true
     CONFIG.AutoParryEnabled = not CONFIG.AutoParryEnabled
     local msg = "Auto Parry: " .. (CONFIG.AutoParryEnabled and "ON" or "OFF")
     if CONFIG.AutoParryEnabled then
-        if CONFIG.CrossEnabled then msg = msg .. " | Catigate: ON" end
+        if CONFIG.CrossEnabled then msg = msg .. " | Castigate: ON" end
         if CONFIG.GlareEnabled then msg = msg .. " | Monarch: ON" end
     end
     pcall(function() notify("Auto Parry", msg, 3) end)
+    if CONFIG.DEBUG then print("[Vault] " .. msg) end
     task_spawn(function()
         task_wait(0.3)
         toggleDebounce = false
     end)
 end
 
--- Try event-based input first (safely wrapped)
+-- Method 1: Event-based (Matcha InputBegan returns raw VK integer)
+local inputConnected = false
 pcall(function()
     local UIS = game:GetService("UserInputService")
     if UIS and UIS.InputBegan then
         local conn = UIS.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed then return end
-            if input.KeyCode == T_KEY_CODE then
+            -- Matcha: input.KeyCode is raw VK integer, not Enum object
+            -- T key = 0x54 = 84
+            if input.KeyCode == VK_T then
+                if CONFIG.DEBUG then print("[Vault] Event toggle triggered (VK " .. tostring(input.KeyCode) .. ")") end
                 doToggle()
             end
         end)
-        if conn then inputConnected = true end
+        if conn then
+            inputConnected = true
+            if CONFIG.DEBUG then print("[Vault] InputBegan connected for toggle") end
+        end
     end
 end)
 
--- Fallback: poll iskeypressed if event connection failed or is unavailable
+-- Method 2: Poll-based fallback (always runs, even if event connected)
 local wasTDown = false
 
 local function checkTToggle()
-    if inputConnected then return end
     local isDown = false
     pcall(function()
-        -- Try global iskeypressed first
         if iskeypressed then
-            isDown = iskeypressed(0x54)
+            isDown = iskeypressed(VK_T)
         end
     end)
-    if not isDown then
-        pcall(function()
-            -- Fallback: try UIS:IsKeyDown with raw number
-            local UIS = game:GetService("UserInputService")
-            if UIS and UIS.IsKeyDown then
-                isDown = UIS:IsKeyDown(R_KEY_CODE)
-            end
-        end)
-    end
+    
     if isDown and not wasTDown then
+        if CONFIG.DEBUG then print("[Vault] Poll toggle triggered") end
         doToggle()
         wasTDown = true
     elseif not isDown then
@@ -592,7 +607,6 @@ local function checkTToggle()
 end
 
 local function parryLoop()
-
     while running do
         checkTToggle()
         updateTargets()
@@ -605,10 +619,11 @@ local function parryLoop()
             if crossAddr and CONFIG.CrossEnabled then
                 if not seenCastigates[crossAddr] then
                     seenCastigates[crossAddr] = now
+                    if CONFIG.DEBUG then print("[Vault] Cross detected: " .. crossAddr:sub(-4)) end
                 end
 
                 if not parriedCrosses[crossAddr] then
-                    tryParry(CONFIG.CastigateDelay, crossAddr, parriedCrosses)
+                    tryParry(CONFIG.CastigateDelay, CONFIG.CastigateMaxDist, crossAddr, parriedCrosses)
                 end
 
                 currentCrossAddr = crossAddr
@@ -619,10 +634,11 @@ local function parryLoop()
             if glareAddr and CONFIG.GlareEnabled then
                 if not seenGlares[glareAddr] then
                     seenGlares[glareAddr] = now
+                    if CONFIG.DEBUG then print("[Vault] Glare detected: " .. glareAddr:sub(-4)) end
                 end
 
                 if not parriedGlares[glareAddr] then
-                    tryParry(CONFIG.MonarchDelay, glareAddr, parriedGlares)
+                    tryParry(CONFIG.MonarchDelay, CONFIG.MonarchMaxDist, glareAddr, parriedGlares)
                 end
 
                 currentGlareAddr = glareAddr
