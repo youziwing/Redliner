@@ -115,10 +115,10 @@ local function onKeyPress(input, gameProcessed)
         STATE.hitboxLarge = not STATE.hitboxLarge
         if STATE.hitboxLarge then
             CONFIG.HURTBOX_TARGET_SIZE = Vector3_new(13, 13, 13)
-            notify("Vault", "Hitbox: LARGE (13,13,13)", 3)
+            notify("Vault", "Hitbox: LARGE", 3)
         else
-            CONFIG.HURTBOX_TARGET_SIZE = Vector3_new(8, 8, 8)
-            notify("Vault", "Hitbox: SMALL (8,8,8)", 3)
+            CONFIG.HURTBOX_TARGET_SIZE = Vector3_new(2.1, 2.1, 1.05)
+            notify("Vault", "Hitbox: NOMRAL", 3)
         end
         -- Clear seen cache so existing hurtboxes are resized immediately
         STATE.hurtboxSeen = {}
