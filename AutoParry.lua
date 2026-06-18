@@ -1,485 +1,302 @@
-local function safeGet(name)
-    local ok, svc = pcall(function() return game:GetService(name) end)
-    if ok and svc then return svc end
-    ok, svc = pcall(function() return game[name] end)
-    if ok and svc then return svc end
-    ok, svc = pcall(function() return game[name:lower()] end)
-    if ok and svc then return svc end
-    return nil
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local plr = Players.LocalPlayer
+local cam = Workspace.CurrentCamera
+
+if not plr or not cam then 
+    warn("bruh where's the player/camera")
+    return 
 end
 
-local Players = safeGet("Players")
-local RunService = safeGet("RunService")
-local Workspace = safeGet("Workspace")
-local ReplicatedStorage = safeGet("ReplicatedStorage")
+local SETTINGS = {
+    AutoParry = true,
+    ParryKey = "F",
+    ToggleKey = "T",
 
-if not Workspace then return end
-if not RunService then return end
-if not Players then return end
-if not ReplicatedStorage then return end
-
-local Camera = nil
-local ok_cam, camResult = pcall(function() return Workspace.CurrentCamera end)
-if ok_cam and camResult then Camera = camResult else return end
-
-local LocalPlayer = nil
-local ok_lp, lp = pcall(function() return Players.LocalPlayer end)
-if ok_lp and lp then LocalPlayer = lp end
-if not LocalPlayer then return end
-
-local math_floor = math.floor
-local math_sqrt = math.sqrt
-local math_acos = math.acos
-local math_deg = math.deg
-local math_abs = math.abs
-local math_random = math.random
-local math_clamp = math.clamp
-local Vector3_new = Vector3.new
-local Vector2_new = Vector2.new
-local pcall = pcall
-local next = next
-local tostring = tostring
-local tick = tick
-local task_wait = task.wait
-local task_spawn = task.spawn
-
-local CONFIG = {
     CastigateDelay = 0.45,
-    MonarchDelay = 1.5,
-    ScanInterval = 0.01,
-    CastigateMaxDist = 500,
-    MonarchMaxDist = 50,
-    ParryCooldown = 0.3,
-    CrossMemoryTimeout = 3,
-    GlareMemoryTimeout = 3,
-    JitterRange = 0.02,
-    MaxDistance = 500,
+    CastigateRange = 500,
+
+    GlareDelay = 1.5,
+    GlareRange = 50,
+
+    Cooldown = 0.3,
+    ScanRate = 0.01,
+
+    MaxDist = 500,
     LineLength = 8,
-    LineThickness = 1.5,
-    LineTransparency = 0.6,
-    TextSize = 13,
+    LineThick = 1.5,
+    LineAlpha = 0.6,
     ShowNames = true,
-    ShowDistance = true,
-    EntitiesFolderName = "Entities",
-    HeadName = "Head",
-    TorsoName = "HumanoidRootPart",
-    SelfName = LocalPlayer and LocalPlayer.Name or nil,
-    
-    -- Wider angles for more reliable detection
-    AngleCloseDist = 20,
-    AngleFarDist = 50,
+    ShowDist = true,
+
     AngleClose = 23,
     AngleFar = 10,
-    
-    CrossEnabled = true,
-    GlareEnabled = true,
-    AutoParryEnabled = true,
-    DEBUG = false,
+    AngleCloseDist = 20,
+    AngleFarDist = 50,
 }
 
 local VK_F = 0x46
 local VK_T = 0x54
-local lastPressTick = 0
-local seenCastigates = {}
-local parriedCrosses = {}
-local seenGlares = {}
-local parriedGlares = {}
-local currentCrossAddr = nil
-local currentGlareAddr = nil
+local lastParry = 0
 local running = true
-local toggleDebounce = false
 
-local Pool = {lines = {}, texts = {}, dots = {}, active = {}}
-local Targets = {}
+local crosses = {}     
+parriedCrosses = {}     
+local glares = {}       
+parriedGlares = {}      
 
-local STATIC_GLARE_ADDR = nil
+local lines = {}
+local texts = {}
+local dots = {}
+local activeKeys = {}
+local targets = {}
 
-local function initStaticGlareAddr()
-    local ok, assets = pcall(function() return ReplicatedStorage:FindFirstChild("Assets", true) end)
-    if not ok or not assets then return end
-    local ok2, effectAssets = pcall(function() return assets:FindFirstChild("EffectAssets", true) end)
-    if not ok2 or not effectAssets then return end
-    local ok3, monarchGlare = pcall(function() return effectAssets:FindFirstChild("MonarchGlare") end)
-    if ok3 and monarchGlare then
-        local ok4, addr = pcall(function() return monarchGlare.Address end)
-        if ok4 and addr then
-            STATIC_GLARE_ADDR = addr
+local glareStaticAddr = nil
+
+local function getDist(a, b)
+    return (a - b).Magnitude
+end
+
+local function getAngle(fromPos, fromLook, toPos)
+    local toTarget = (toPos - fromPos).Unit
+    local dot = fromLook:Dot(toTarget)
+    dot = math.clamp(dot, -1, 1)
+    return math.deg(math.acos(dot))
+end
+
+local function getDynAngle(dist)
+    local t = math.clamp((dist - SETTINGS.AngleCloseDist) / (SETTINGS.AngleFarDist - SETTINGS.AngleCloseDist), 0, 1)
+    return SETTINGS.AngleClose + (SETTINGS.AngleFar - SETTINGS.AngleClose) * t
+end
+
+local function initGlareAddr()
+    local assets = ReplicatedStorage:FindFirstChild("Assets", true)
+    if not assets then return end
+    local effectAssets = assets:FindFirstChild("EffectAssets", true)
+    if not effectAssets then return end
+    local monarchGlare = effectAssets:FindFirstChild("MonarchGlare")
+    if monarchGlare then
+        local ok, addr = pcall(function() return monarchGlare.Address end)
+        if ok then glareStaticAddr = addr end
+    end
+end
+
+local function getTargets()
+    local current = {}
+    local folder = Workspace:FindFirstChild("Entities")
+    if folder then
+        for _, e in ipairs(folder:GetChildren()) do
+            if e.Name ~= plr.Name then
+                local key = e.Name .. "_" .. tostring(e.Address or "0")
+                current[key] = true
+                if not targets[key] then
+                    targets[key] = e
+                end
+            end
+        end
+    end
+
+    -- cleanup dead targets
+    for key in pairs(targets) do
+        if not current[key] then
+            targets[key] = nil
+            if lines[key] then lines[key].Visible = false end
+            if texts[key] then texts[key].Visible = false end
+            if dots[key] then dots[key].Visible = false end
+            activeKeys[key] = nil
         end
     end
 end
 
-local function safeFindFirstChild(parent, name)
-    if not parent then return nil end
-    local ok, child = pcall(function() return parent:FindFirstChild(name) end)
-    if ok and child then return child end
-    return nil
-end
-
-local function safeFindFirstChildTrue(parent, name)
-    if not parent then return nil end
-    local ok, child = pcall(function() return parent:FindFirstChild(name, true) end)
-    if ok and child then return child end
-    return nil
-end
-
-local function safeGetChildren(parent)
-    if not parent then return {} end
-    local ok, children = pcall(function() return parent:GetChildren() end)
-    if ok and children then return children end
-    return {}
-end
-
-local function safeGetDescendants(parent)
-    if not parent then return {} end
-    local ok, desc = pcall(function() return parent:GetDescendants() end)
-    if ok and desc then return desc end
-    return {}
-end
-
-local function safeGetPosition(part)
-    if not part then return nil end
-    local ok, pos = pcall(function() return part.Position end)
-    if ok and pos then return pos end
-    return nil
-end
-
-local function safeGetCFrame(part)
-    if not part then return nil end
-    local ok, cf = pcall(function() return part.CFrame end)
-    if ok and cf then return cf end
-    return nil
-end
-
-local function safeGetLookVector(cf)
-    if not cf then return nil end
-    local ok, look = pcall(function() return cf.LookVector end)
-    if ok and look then return look end
-    return nil
-end
-
-local function safeGetName(instance)
-    if not instance then return "?" end
-    local ok, name = pcall(function() return instance.Name end)
-    if ok and name then return tostring(name) end
-    return "?"
-end
-
-local function isSelf(target)
-    if not CONFIG.SelfName then return false end
-    if not target then return false end
-    return safeGetName(target) == CONFIG.SelfName
-end
-
-local function findPart(model, name)
-    if not model then return nil end
-    local part = safeFindFirstChild(model, name)
-    if part then return part end
-    return nil
-end
-
-local function getLivePartData(model, partName)
+local function getAttackData(model)
     if not model then return nil, nil end
-    local part = findPart(model, partName)
-    if not part then return nil, nil end
-    local pos = safeGetPosition(part)
-    local cf = safeGetCFrame(part)
-    if not pos or not cf then return nil, nil end
-    local lookVec = safeGetLookVector(cf)
-    if not lookVec then return nil, nil end
-    return pos, lookVec
-end
 
-local function getLiveHeadData(model)
-    return getLivePartData(model, CONFIG.HeadName)
-end
-
-local function getLiveTorsoData(model)
-    local pos, lookVec = getLivePartData(model, CONFIG.TorsoName)
-    if pos and lookVec then return pos, lookVec end
-    local fallbackNames = {"UpperTorso", "Torso", "LowerTorso", "Body"}
-    for _, name in next, fallbackNames do
-        pos, lookVec = getLivePartData(model, name)
-        if pos and lookVec then return pos, lookVec end
+    local head = model:FindFirstChild("Head")
+    if head then
+        return head.Position, head.CFrame.LookVector
     end
+
+    for _, name in ipairs({"HumanoidRootPart", "UpperTorso", "Torso", "LowerTorso"}) do
+        local part = model:FindFirstChild(name)
+        if part then
+            return part.Position, part.CFrame.LookVector
+        end
+    end
+
     return nil, nil
 end
 
--- FIX: Use head look vector for accurate facing detection
-local function getBestAttackData(model)
-    local headPos, headLook = getLiveHeadData(model)
-    if headPos and headLook then
-        return headPos, headLook
+local function getLine(key)
+    if not lines[key] then
+        lines[key] = Drawing.new("Line")
+        lines[key].Color = Color3.new(1, 0.2, 0.2)
     end
-    return getLiveTorsoData(model)
+    return lines[key]
 end
 
-local function dist3D(a, b)
-    local dx = b.X - a.X
-    local dy = b.Y - a.Y
-    local dz = b.Z - a.Z
-    return math_sqrt(dx*dx + dy*dy + dz*dz)
-end
-
-local function getKey(target)
-    local name = safeGetName(target)
-    local ok, addr = pcall(function() return target.Address end)
-    return name .. "_" .. tostring(ok and addr or "0")
-end
-
-local function updateTargets()
-    local current = {}
-    local entitiesFolder = safeFindFirstChild(Workspace, CONFIG.EntitiesFolderName)
-    if entitiesFolder then
-        local entities = safeGetChildren(entitiesFolder)
-        for _, entity in next, entities do
-            if not isSelf(entity) then
-                local key = getKey(entity)
-                current[key] = true
-                if not Targets[key] then
-                    Targets[key] = {target = entity}
-                end
-            end
-        end
+local function getDot(key)
+    if not dots[key] then
+        dots[key] = Drawing.new("Circle")
+        dots[key].Color = Color3.new(1, 0.8, 0.2)
+        dots[key].Filled = true
     end
-    for key in next, Targets do
-        if not current[key] then
-            Targets[key] = nil
-            if Pool.lines[key] then pcall(function() Pool.lines[key].Visible = false end) end
-            if Pool.texts[key] then pcall(function() Pool.texts[key].Visible = false end) end
-            if Pool.dots[key] then pcall(function() Pool.dots[key].Visible = false end) end
-            Pool.active[key] = nil
-        end
+    return dots[key]
+end
+
+local function getText(key)
+    if not texts[key] then
+        texts[key] = Drawing.new("Text")
+        texts[key].Color = Color3.new(1, 1, 1)
+        texts[key].Outline = true
+        texts[key].Center = false
     end
-end
-
-local function roundVec2(v)
-    if not v then return Vector2_new(0, 0) end
-    return Vector2_new(math_floor(v.X + 0.5), math_floor(v.Y + 0.5))
-end
-
-local function safeWTS(pos)
-    local ok, screenPos, onScreen = pcall(function() return Camera:WorldToViewportPoint(pos) end)
-    if ok and screenPos then return roundVec2(Vector2_new(screenPos.X, screenPos.Y)), onScreen end
-    return nil, false
-end
-
-local function getDraw(drawingType, pool, key)
-    if not pool[key] then
-        local ok, obj = pcall(function() return Drawing.new(drawingType) end)
-        if ok and obj then
-            pool[key] = obj
-            if drawingType == "Line" then
-                obj.Color = Color3.new(1, 0.2, 0.2)
-            elseif drawingType == "Circle" then
-                obj.Color = Color3.new(1, 0.8, 0.2)
-                obj.Filled = true
-            elseif drawingType == "Text" then
-                obj.Color = Color3.new(1, 1, 1)
-                obj.Outline = true
-                obj.Center = false
-            end
-        else
-            return nil
-        end
-    end
-    return pool[key]
+    return texts[key]
 end
 
 local function hide(key)
-    if Pool.lines[key] then pcall(function() Pool.lines[key].Visible = false end) end
-    if Pool.texts[key] then pcall(function() Pool.texts[key].Visible = false end) end
-    if Pool.dots[key] then pcall(function() Pool.dots[key].Visible = false end) end
-    Pool.active[key] = nil
+    if lines[key] then lines[key].Visible = false end
+    if texts[key] then texts[key].Visible = false end
+    if dots[key] then dots[key].Visible = false end
+    activeKeys[key] = nil
 end
 
-local function renderVisualizer()
-    local camPos = safeGetPosition(Camera)
-    if not camPos then return end
+local function updateVisuals()
+    local camPos = cam.CFrame.Position
 
-    for key, data in next, Targets do
-        local target = data.target
-        local shouldDraw = true
+    for key, target in pairs(targets) do
+        local pos, look = getAttackData(target)
+        if not pos or not look then
+            hide(key)
+            continue
+        end
 
-        if not target then
-            shouldDraw = false
-        else
-            local pos, lookVec = getLiveHeadData(target)
-            if not pos or not lookVec then
-                shouldDraw = false
-            else
-                local dist = dist3D(camPos, pos)
-                if dist > CONFIG.MaxDistance then
-                    shouldDraw = false
-                else
-                    local endPos = pos + (lookVec * CONFIG.LineLength)
-                    local ss, onScreen1 = safeWTS(pos)
-                    local se, onScreen2 = safeWTS(endPos)
+        local dist = getDist(camPos, pos)
+        if dist > SETTINGS.MaxDist then
+            hide(key)
+            continue
+        end
 
-                    if not ss or not se or not onScreen1 or not onScreen2 then
-                        shouldDraw = false
-                    else
-                        local alpha = 1
-                        local thick = CONFIG.LineThickness
-                        if CONFIG.FadeWithDistance and dist > 100 then
-                            local fade = 1 - ((dist - 100) / (CONFIG.MaxDistance - 100))
-                            alpha = fade < 0.2 and 0.2 or fade
-                            thick = CONFIG.LineThickness * alpha
-                            if thick < 0.5 then thick = 0.5 end
-                        end
+        local endPos = pos + look * SETTINGS.LineLength
+        local sp1, on1 = cam:WorldToViewportPoint(pos)
+        local sp2, on2 = cam:WorldToViewportPoint(endPos)
 
-                        local line = getDraw("Line", Pool.lines, key)
-                        if line then
-                            line.From = ss
-                            line.To = se
-                            line.Thickness = thick
-                            line.Transparency = alpha * CONFIG.LineTransparency
-                            line.Visible = true
-                        end
+        if not on1 or not on2 then
+            hide(key)
+            continue
+        end
 
-                        local dot = getDraw("Circle", Pool.dots, key)
-                        if dot then
-                            dot.Position = se
-                            dot.Radius = math_floor(thick * 2 + 1)
-                            dot.Transparency = alpha * 0.8
-                            dot.Visible = true
-                        end
+        local s1 = Vector2.new(math.floor(sp1.X + 0.5), math.floor(sp1.Y + 0.5))
+        local s2 = Vector2.new(math.floor(sp2.X + 0.5), math.floor(sp2.Y + 0.5))
 
-                        if CONFIG.ShowNames or CONFIG.ShowDistance then
-                            local text = getDraw("Text", Pool.texts, key)
-                            if text then
-                                local str = ""
-                                if CONFIG.ShowNames then str = safeGetName(target) end
-                                if CONFIG.ShowDistance then
-                                    if str ~= "" then str = str .. " " end
-                                    str = str .. "[" .. math_floor(dist) .. "m]"
-                                end
-                                text.Text = str
-                                text.Size = CONFIG.TextSize
-                                text.Position = Vector2_new(ss.X + 8, ss.Y - 8)
-                                text.Transparency = alpha
-                                text.Visible = true
-                            end
-                        end
+        local alpha = 1
+        local thick = SETTINGS.LineThick
+        if dist > 100 then
+            alpha = math.clamp(1 - (dist - 100) / (SETTINGS.MaxDist - 100), 0.2, 1)
+            thick = math.max(0.5, SETTINGS.LineThick * alpha)
+        end
 
-                        Pool.active[key] = true
-                    end
-                end
+        local line = getLine(key)
+        line.From = s1
+        line.To = s2
+        line.Thickness = thick
+        line.Transparency = alpha * SETTINGS.LineAlpha
+        line.Visible = true
+
+        local dot = getDot(key)
+        dot.Position = s2
+        dot.Radius = math.floor(thick * 2 + 1)
+        dot.Transparency = alpha * 0.8
+        dot.Visible = true
+
+        if SETTINGS.ShowNames or SETTINGS.ShowDist then
+            local text = getText(key)
+            local str = ""
+            if SETTINGS.ShowNames then str = target.Name end
+            if SETTINGS.ShowDist then
+                if str ~= "" then str = str .. " " end
+                str = str .. "[" .. math.floor(dist) .. "m]"
             end
+            text.Text = str
+            text.Size = 13
+            text.Position = Vector2.new(s1.X + 8, s1.Y - 8)
+            text.Transparency = alpha
+            text.Visible = true
         end
 
-        if not shouldDraw then
+        activeKeys[key] = true
+    end
+
+    for key in pairs(lines) do
+        if not activeKeys[key] then
             hide(key)
         end
     end
-
-    for key in next, Pool.lines do
-        if not Pool.active[key] then
-            hide(key)
-        end
-    end
-    for key in next, Pool.active do
-        Pool.active[key] = nil
+    for key in pairs(activeKeys) do
+        activeKeys[key] = nil
     end
 end
 
-local function getDynamicAngleThreshold(dist)
-    local t = (dist - CONFIG.AngleCloseDist) / (CONFIG.AngleFarDist - CONFIG.AngleCloseDist)
-    t = math_clamp(t, 0, 1)
-    local angle = CONFIG.AngleClose + (CONFIG.AngleFar - CONFIG.AngleClose) * t
-    return angle
-end
+local function isFacingMe(enemyPos, enemyLook, maxDist)
+    local char = plr.Character
+    if not char then return false, 180, 0 end
+    local head = char:FindFirstChild("Head")
+    if not head then return false, 180, 0 end
 
--- FIX: Removed math_abs from dot product
-local function isEnemyLookingAtMe(enemyPos, enemyLookVec, maxDist)
-    if not enemyPos or not enemyLookVec then return false, 180, 0 end
-    local myChar = LocalPlayer.Character
-    if not myChar then return false, 180, 0 end
-    local myHead = safeFindFirstChild(myChar, CONFIG.HeadName)
-    if not myHead then return false, 180, 0 end
-    local myPos = safeGetPosition(myHead)
-    if not myPos then return false, 180, 0 end
-
-    local dist = dist3D(enemyPos, myPos)
+    local myPos = head.Position
+    local dist = getDist(enemyPos, myPos)
     if dist > maxDist then return false, 180, dist end
 
-    local toMe = (myPos - enemyPos).Unit
-    local dot = enemyLookVec.X * toMe.X + enemyLookVec.Y * toMe.Y + enemyLookVec.Z * toMe.Z
-    
-    -- REMOVED: dot = math_abs(dot)
-    -- Now dot > 0 = facing toward you, dot < 0 = facing away
-    
-    if dot > 1 then dot = 1 end
-    if dot < -1 then dot = -1 end
-
-    -- Must be facing toward you
-    if dot <= 0 then 
-        if CONFIG.DEBUG then print("[Vault] AngleCheck | dot=" .. string.format("%.3f", dot) .. " | FACING AWAY") end
-        return false, 90, dist 
-    end
-
-    local angle = math_deg(math_acos(dot))
-    local threshold = getDynamicAngleThreshold(dist)
-
-    if CONFIG.DEBUG then
-        print("[Vault] AngleCheck | dot=" .. string.format("%.3f", dot) .. " | angle=" .. string.format("%.1f", angle) .. " | threshold=" .. string.format("%.1f", threshold) .. " | result=" .. tostring(angle < threshold))
-    end
+    local angle = getAngle(enemyPos, enemyLook, myPos)
+    local threshold = getDynAngle(dist)
 
     return angle < threshold, angle, dist
 end
 
-local function findClosestEnemy(maxDist)
-    local myChar = LocalPlayer.Character
-    if not myChar then return nil, math.huge, false end
-    local myHead = safeFindFirstChild(myChar, CONFIG.HeadName)
-    if not myHead then return nil, math.huge, false end
-    local myPos = safeGetPosition(myHead)
-    if not myPos then return nil, math.huge, false end
+local function getClosestThreat(maxDist)
+    local char = plr.Character
+    if not char then return nil, math.huge, false end
+    local head = char:FindFirstChild("Head")
+    if not head then return nil, math.huge, false end
 
-    local closestDist = math.huge
-    local closestKey = nil
-    local closestIsFacing = false
+    local myPos = head.Position
+    local closestKey, closestDist = nil, math.huge
+    local isFacing = false
 
-    for key, data in next, Targets do
-        if not data.target then continue end
-
-        local pos, lookVec = getBestAttackData(data.target)
+    for key, target in pairs(targets) do
+        local pos, look = getAttackData(target)
         if pos then
-            local dist = dist3D(myPos, pos)
+            local dist = getDist(myPos, pos)
             if dist < closestDist and dist <= maxDist then
                 closestDist = dist
                 closestKey = key
-
-                if lookVec then
-                    local isFacing, _, _ = isEnemyLookingAtMe(pos, lookVec, maxDist)
-                    closestIsFacing = isFacing
+                if look then
+                    isFacing = select(1, isFacingMe(pos, look, maxDist))
                 end
             end
         end
     end
 
-    return closestKey, closestDist, closestIsFacing
+    return closestKey, closestDist, isFacing
 end
 
-local function pressF(delay)
-    if not CONFIG.AutoParryEnabled then return false end
+local function doParry(delay)
+    if not SETTINGS.AutoParry then return false end
 
     local now = tick()
-    if now - lastPressTick < CONFIG.ParryCooldown then return false end
-    lastPressTick = now
+    if now - lastParry < SETTINGS.Cooldown then return false end
+    lastParry = now
 
-    local jitter = (math_random() * CONFIG.JitterRange * 2) - CONFIG.JitterRange
-    local actualDelay = delay + jitter
-    if actualDelay < 0 then actualDelay = 0 end
+    local jitter = (math.random() * 0.04) - 0.02  -- +/- 0.02s jitter
+    local actualDelay = math.max(0, delay + jitter)
 
-    if CONFIG.DEBUG then
-        print("[Vault] Parry in " .. string.format("%.3f", actualDelay) .. "s")
-    end
-
-    task_spawn(function()
-        task_wait(actualDelay)
+    task.spawn(function()
+        task.wait(actualDelay)
         pcall(function()
             keypress(VK_F)
-            task_wait(0.05)
+            task.wait(0.05)
             keyrelease(VK_F)
         end)
     end)
@@ -488,248 +305,158 @@ local function pressF(delay)
 end
 
 local function getCurrentCross()
-    local lp = LocalPlayer
-    if not lp or not lp.PlayerGui then return nil end
-
-    local visualEffects = safeFindFirstChild(lp.PlayerGui, "VisualEffects")
-    if not visualEffects then return nil end
-
-    local castigate = safeFindFirstChild(visualEffects, "Cross")
-    if not castigate then return nil end
-
-    return tostring(castigate.Address)
+    if not plr.PlayerGui then return nil end
+    local vis = plr.PlayerGui:FindFirstChild("VisualEffects")
+    if not vis then return nil end
+    local cross = vis:FindFirstChild("Cross")
+    if cross then
+        return tostring(cross.Address)
+    end
+    return nil
 end
 
 local function getCurrentGlare()
-    local lp = LocalPlayer
-    if not lp or not lp.PlayerGui then return nil end
-
-    local visualEffects = safeFindFirstChildTrue(lp.PlayerGui, "VisualEffects")
-    if not visualEffects then return nil end
-
-    local glare = safeFindFirstChild(visualEffects, "MonarchGlare")
+    if not plr.PlayerGui then return nil end
+    local vis = plr.PlayerGui:FindFirstChild("VisualEffects", true)
+    if not vis then return nil end
+    local glare = vis:FindFirstChild("MonarchGlare")
     if not glare then return nil end
-
     local addr = tostring(glare.Address)
-    if STATIC_GLARE_ADDR and addr == STATIC_GLARE_ADDR then return nil end
-
+    if addr == glareStaticAddr then return nil end
     return addr
 end
 
-local function cleanupOldEntries()
-    local now = tick()
-    for addr, time in next, seenCastigates do
-        if now - time > CONFIG.CrossMemoryTimeout then
-            seenCastigates[addr] = nil
-            parriedCrosses[addr] = nil
-        end
-    end
-    for addr, time in next, seenGlares do
-        if now - time > CONFIG.GlareMemoryTimeout then
-            seenGlares[addr] = nil
-            parriedGlares[addr] = nil
-        end
-    end
-end
-
 local function tryParry(delay, maxDist, addr, parriedTable)
-    if not CONFIG.AutoParryEnabled then return false end
+    if not SETTINGS.AutoParry then return false end
 
-    local threatKey, threatDist, isFacing = findClosestEnemy(maxDist)
+    local _, threatDist, facing = getClosestThreat(maxDist)
 
-    if threatKey and isFacing then
-        local actualDelay = delay * 0.85
-
-        if CONFIG.DEBUG then
-            print("[Vault] tryParry | dist=" .. math_floor(threatDist) .. " | facing=true | delay=" .. string.format("%.3f", actualDelay))
-        end
-
-        local didParry = pressF(actualDelay)
+    if facing then
+        local didParry = doParry(delay * 0.85)
         if didParry then
             parriedTable[addr] = true
             return true
         end
-    elseif threatKey and not isFacing then
-        if CONFIG.DEBUG then
-            print("[Vault] tryParry | dist=" .. math_floor(threatDist) .. " | facing=false | SKIPPED")
-        end
-    elseif CONFIG.DEBUG then
-        print("[Vault] tryParry | no threat in range (max=" .. maxDist .. ")")
     end
 
     return false
 end
 
-local toggleStateText = nil
+local toggleText = nil
 
-local function updateToggleDisplay()
-    if not toggleStateText then
-        local ok, obj = pcall(function() return Drawing.new("Text") end)
-        if ok and obj then
-            toggleStateText = obj
-            toggleStateText.Size = 14
-            toggleStateText.Font = Drawing.Fonts.SystemBold
-            toggleStateText.Outline = true
-            toggleStateText.Center = false
-            toggleStateText.Position = Vector2_new(20, 60)
-            toggleStateText.ZIndex = 100
-        end
+local function updateToggle()
+    if not toggleText then
+        toggleText = Drawing.new("Text")
+        toggleText.Size = 14
+        toggleText.Font = Drawing.Fonts.SystemBold
+        toggleText.Outline = true
+        toggleText.Position = Vector2.new(20, 60)
+        toggleText.ZIndex = 100
     end
-    if toggleStateText then
-        if CONFIG.AutoParryEnabled then
-            toggleStateText.Text = "PARRY: ON [T]"
-            toggleStateText.Color = Color3.new(0.2, 1, 0.2)
-        else
-            toggleStateText.Text = "PARRY: OFF [T]"
-            toggleStateText.Color = Color3.new(1, 0.2, 0.2)
-        end
-        toggleStateText.Visible = true
+
+    if SETTINGS.AutoParry then
+        toggleText.Text = "PARRY: ON [T]"
+        toggleText.Color = Color3.new(0.2, 1, 0.2)
+    else
+        toggleText.Text = "PARRY: OFF [T]"
+        toggleText.Color = Color3.new(1, 0.2, 0.2)
     end
+    toggleText.Visible = true
 end
 
-local function doToggle()
-    if toggleDebounce then
-        if CONFIG.DEBUG then print("[Vault] Toggle debounced") end
-        return
-    end
-    toggleDebounce = true
-    CONFIG.AutoParryEnabled = not CONFIG.AutoParryEnabled
-    local msg = "Auto Parry: " .. (CONFIG.AutoParryEnabled and "ON" or "OFF")
-    if CONFIG.AutoParryEnabled then
-        if CONFIG.CrossEnabled then msg = msg .. " | Castigate: ON" end
-        if CONFIG.GlareEnabled then msg = msg .. " | Monarch: ON" end
-    end
+local function toggle()
+    SETTINGS.AutoParry = not SETTINGS.AutoParry
+    local msg = "Auto Parry: " .. (SETTINGS.AutoParry and "ON" or "OFF")
     pcall(function() notify("Auto Parry", msg, 3) end)
-    if CONFIG.DEBUG then print("[Vault] " .. msg) end
-    updateToggleDisplay()
-    task_spawn(function()
-        task_wait(0.3)
-        toggleDebounce = false
-    end)
+    updateToggle()
 end
 
-local inputConnected = false
-pcall(function()
-    local UIS = game:GetService("UserInputService")
-    if UIS and UIS.InputBegan then
-        local conn = UIS.InputBegan:Connect(function(input, gameProcessed)
-            if gameProcessed then return end
-            if input.KeyCode == VK_T then
-                if CONFIG.DEBUG then print("[Vault] Event toggle triggered (VK " .. tostring(input.KeyCode) .. ")") end
-                doToggle()
-            end
-        end)
-        if conn then
-            inputConnected = true
-            if CONFIG.DEBUG then print("[Vault] InputBegan connected for toggle") end
-        end
+local UIS = game:GetService("UserInputService")
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.T then
+        toggle()
     end
 end)
 
-local wasTDown = false
-
-local function checkTToggle()
-    local isDown = false
-    pcall(function()
-        if iskeypressed then
-            isDown = iskeypressed(VK_T)
-        end
-    end)
-    
-    if isDown and not wasTDown then
-        if CONFIG.DEBUG then print("[Vault] Poll toggle triggered") end
-        doToggle()
-        wasTDown = true
-    elseif not isDown then
-        wasTDown = false
-    end
-end
-
 local function parryLoop()
     while running do
-        checkTToggle()
-        updateTargets()
+        getTargets()
 
-        if CONFIG.AutoParryEnabled then
+        if SETTINGS.AutoParry then
+            local now = tick()
             local crossAddr = getCurrentCross()
             local glareAddr = getCurrentGlare()
-            local now = tick()
 
-            if crossAddr and CONFIG.CrossEnabled then
-                if not seenCastigates[crossAddr] then
-                    seenCastigates[crossAddr] = now
-                    if CONFIG.DEBUG then print("[Vault] Cross detected: " .. crossAddr:sub(-4)) end
+            if crossAddr then
+                if not crosses[crossAddr] then
+                    crosses[crossAddr] = now
                 end
-
                 if not parriedCrosses[crossAddr] then
-                    tryParry(CONFIG.CastigateDelay, CONFIG.CastigateMaxDist, crossAddr, parriedCrosses)
+                    tryParry(SETTINGS.CastigateDelay, SETTINGS.CastigateRange, crossAddr, parriedCrosses)
                 end
-
-                currentCrossAddr = crossAddr
-            else
-                currentCrossAddr = nil
             end
 
-            if glareAddr and CONFIG.GlareEnabled then
-                if not seenGlares[glareAddr] then
-                    seenGlares[glareAddr] = now
-                    if CONFIG.DEBUG then print("[Vault] Glare detected: " .. glareAddr:sub(-4)) end
+            -- monarch glare
+            if glareAddr then
+                if not glares[glareAddr] then
+                    glares[glareAddr] = now
                 end
-
                 if not parriedGlares[glareAddr] then
-                    tryParry(CONFIG.MonarchDelay, CONFIG.MonarchMaxDist, glareAddr, parriedGlares)
+                    tryParry(SETTINGS.GlareDelay, SETTINGS.GlareRange, glareAddr, parriedGlares)
                 end
-
-                currentGlareAddr = glareAddr
-            else
-                currentGlareAddr = nil
             end
         end
 
-        cleanupOldEntries()
-        task_wait(CONFIG.ScanInterval)
+        local now = tick()
+        for addr, time in pairs(crosses) do
+            if now - time > 3 then
+                crosses[addr] = nil
+                parriedCrosses[addr] = nil
+            end
+        end
+        for addr, time in pairs(glares) do
+            if now - time > 3 then
+                glares[addr] = nil
+                parriedGlares[addr] = nil
+            end
+        end
+
+        task.wait(SETTINGS.ScanRate)
     end
 end
 
 local function visualLoop()
     while running do
-        updateTargets()
-        renderVisualizer()
-        updateToggleDisplay()
-        task_wait(0.016)
+        getTargets()
+        updateVisuals()
+        updateToggle()
+        task.wait(0.016)  
     end
 end
 
-
-initStaticGlareAddr()
-task_spawn(parryLoop)
-task_spawn(visualLoop)
-
-_G.LookParryCleanup = function()
+_G.ParryCleanup = function()
     running = false
-    if toggleStateText then
-        pcall(function() toggleStateText.Visible = false end)
-        pcall(function() toggleStateText:Remove() end)
-        toggleStateText = nil
+    if toggleText then
+        pcall(function() toggleText:Remove() end)
+        toggleText = nil
     end
-    for key in next, Pool.lines do
-        if Pool.lines[key] then pcall(function() Pool.lines[key]:Remove() end) end
-        if Pool.dots[key] then pcall(function() Pool.dots[key]:Remove() end) end
-        if Pool.texts[key] then pcall(function() Pool.texts[key]:Remove() end) end
+    for _, t in pairs({lines, dots, texts}) do
+        for _, obj in pairs(t) do
+            pcall(function() obj:Remove() end)
+        end
     end
-    Pool.lines = {}
-    Pool.dots = {}
-    Pool.texts = {}
-    Pool.active = {}
-    Targets = {}
-    seenCastigates = {}
-    parriedCrosses = {}
-    seenGlares = {}
-    parriedGlares = {}
-    currentCrossAddr = nil
-    currentGlareAddr = nil
-    lastPressTick = 0
-    CONFIG.AutoParryEnabled = true
+    lines, dots, texts = {}, {}, {}
+    activeKeys = {}
+    targets = {}
+    crosses, parriedCrosses = {}, {}
+    glares, parriedGlares = {}, {}
+    lastParry = 0
+    SETTINGS.AutoParry = true
 end
 
-print("Auto Parry Loaded")
+initGlareAddr()
+task.spawn(parryLoop)
+task.spawn(visualLoop)
+
+print("Auto Parry loaded | Press T to toggle")
