@@ -45,7 +45,7 @@ local task_spawn = task.spawn
 
 local CONFIG = {
     CastigateDelay = 0.45,
-    MonarchDelay = 1.2,
+    MonarchDelay = 1.5,
     ScanInterval = 0.01,
     CastigateMaxDist = 500,
     MonarchMaxDist = 50,
@@ -64,10 +64,13 @@ local CONFIG = {
     HeadName = "Head",
     TorsoName = "HumanoidRootPart",
     SelfName = LocalPlayer and LocalPlayer.Name or nil,
+    
+    -- Wider angles for more reliable detection
     AngleCloseDist = 20,
     AngleFarDist = 50,
-    AngleClose = 15,
-    AngleFar = 7,
+    AngleClose = 23,
+    AngleFar = 10,
+    
     CrossEnabled = true,
     GlareEnabled = true,
     AutoParryEnabled = true,
@@ -201,12 +204,13 @@ local function getLiveTorsoData(model)
     return nil, nil
 end
 
+-- FIX: Use head look vector for accurate facing detection
 local function getBestAttackData(model)
-    local torsoPos, torsoLook = getLiveTorsoData(model)
-    if torsoPos and torsoLook then
-        return torsoPos, torsoLook
+    local headPos, headLook = getLiveHeadData(model)
+    if headPos and headLook then
+        return headPos, headLook
     end
-    return getLiveHeadData(model)
+    return getLiveTorsoData(model)
 end
 
 local function dist3D(a, b)
@@ -385,6 +389,7 @@ local function getDynamicAngleThreshold(dist)
     return angle
 end
 
+-- FIX: Removed math_abs from dot product
 local function isEnemyLookingAtMe(enemyPos, enemyLookVec, maxDist)
     if not enemyPos or not enemyLookVec then return false, 180, 0 end
     local myChar = LocalPlayer.Character
@@ -399,12 +404,25 @@ local function isEnemyLookingAtMe(enemyPos, enemyLookVec, maxDist)
 
     local toMe = (myPos - enemyPos).Unit
     local dot = enemyLookVec.X * toMe.X + enemyLookVec.Y * toMe.Y + enemyLookVec.Z * toMe.Z
-    dot = math_abs(dot)
+    
+    -- REMOVED: dot = math_abs(dot)
+    -- Now dot > 0 = facing toward you, dot < 0 = facing away
+    
     if dot > 1 then dot = 1 end
     if dot < -1 then dot = -1 end
 
+    -- Must be facing toward you
+    if dot <= 0 then 
+        if CONFIG.DEBUG then print("[Vault] AngleCheck | dot=" .. string.format("%.3f", dot) .. " | FACING AWAY") end
+        return false, 90, dist 
+    end
+
     local angle = math_deg(math_acos(dot))
     local threshold = getDynamicAngleThreshold(dist)
+
+    if CONFIG.DEBUG then
+        print("[Vault] AngleCheck | dot=" .. string.format("%.3f", dot) .. " | angle=" .. string.format("%.1f", angle) .. " | threshold=" .. string.format("%.1f", threshold) .. " | result=" .. tostring(angle < threshold))
+    end
 
     return angle < threshold, angle, dist
 end
@@ -519,20 +537,21 @@ local function tryParry(delay, maxDist, addr, parriedTable)
 
     local threatKey, threatDist, isFacing = findClosestEnemy(maxDist)
 
-    if threatKey then
-        local actualDelay = delay
-        if isFacing then
-            actualDelay = delay * 0.85
-        end
+    if threatKey and isFacing then
+        local actualDelay = delay * 0.85
 
         if CONFIG.DEBUG then
-            print("[Vault] tryParry | dist=" .. math_floor(threatDist) .. " | facing=" .. tostring(isFacing) .. " | delay=" .. string.format("%.3f", actualDelay))
+            print("[Vault] tryParry | dist=" .. math_floor(threatDist) .. " | facing=true | delay=" .. string.format("%.3f", actualDelay))
         end
 
         local didParry = pressF(actualDelay)
         if didParry then
             parriedTable[addr] = true
             return true
+        end
+    elseif threatKey and not isFacing then
+        if CONFIG.DEBUG then
+            print("[Vault] tryParry | dist=" .. math_floor(threatDist) .. " | facing=false | SKIPPED")
         end
     elseif CONFIG.DEBUG then
         print("[Vault] tryParry | no threat in range (max=" .. maxDist .. ")")
@@ -541,9 +560,32 @@ local function tryParry(delay, maxDist, addr, parriedTable)
     return false
 end
 
--- ============================================
--- TOGGLE SYSTEM — Fixed for Matcha
--- ============================================
+local toggleStateText = nil
+
+local function updateToggleDisplay()
+    if not toggleStateText then
+        local ok, obj = pcall(function() return Drawing.new("Text") end)
+        if ok and obj then
+            toggleStateText = obj
+            toggleStateText.Size = 14
+            toggleStateText.Font = Drawing.Fonts.SystemBold
+            toggleStateText.Outline = true
+            toggleStateText.Center = false
+            toggleStateText.Position = Vector2_new(20, 60)
+            toggleStateText.ZIndex = 100
+        end
+    end
+    if toggleStateText then
+        if CONFIG.AutoParryEnabled then
+            toggleStateText.Text = "PARRY: ON [T]"
+            toggleStateText.Color = Color3.new(0.2, 1, 0.2)
+        else
+            toggleStateText.Text = "PARRY: OFF [T]"
+            toggleStateText.Color = Color3.new(1, 0.2, 0.2)
+        end
+        toggleStateText.Visible = true
+    end
+end
 
 local function doToggle()
     if toggleDebounce then
@@ -559,21 +601,19 @@ local function doToggle()
     end
     pcall(function() notify("Auto Parry", msg, 3) end)
     if CONFIG.DEBUG then print("[Vault] " .. msg) end
+    updateToggleDisplay()
     task_spawn(function()
         task_wait(0.3)
         toggleDebounce = false
     end)
 end
 
--- Method 1: Event-based (Matcha InputBegan returns raw VK integer)
 local inputConnected = false
 pcall(function()
     local UIS = game:GetService("UserInputService")
     if UIS and UIS.InputBegan then
         local conn = UIS.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed then return end
-            -- Matcha: input.KeyCode is raw VK integer, not Enum object
-            -- T key = 0x54 = 84
             if input.KeyCode == VK_T then
                 if CONFIG.DEBUG then print("[Vault] Event toggle triggered (VK " .. tostring(input.KeyCode) .. ")") end
                 doToggle()
@@ -586,7 +626,6 @@ pcall(function()
     end
 end)
 
--- Method 2: Poll-based fallback (always runs, even if event connected)
 local wasTDown = false
 
 local function checkTToggle()
@@ -656,6 +695,7 @@ local function visualLoop()
     while running do
         updateTargets()
         renderVisualizer()
+        updateToggleDisplay()
         task_wait(0.016)
     end
 end
@@ -667,6 +707,11 @@ task_spawn(visualLoop)
 
 _G.LookParryCleanup = function()
     running = false
+    if toggleStateText then
+        pcall(function() toggleStateText.Visible = false end)
+        pcall(function() toggleStateText:Remove() end)
+        toggleStateText = nil
+    end
     for key in next, Pool.lines do
         if Pool.lines[key] then pcall(function() Pool.lines[key]:Remove() end) end
         if Pool.dots[key] then pcall(function() Pool.dots[key]:Remove() end) end
