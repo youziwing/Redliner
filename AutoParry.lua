@@ -6,10 +6,10 @@ local VK_F = 0x46
 local VK_T = 0x54
 local CONFIG = {
     CastigateDelay = 0.39,
-    MonarchDelay = 1.5,
-    ScanInterval = 0.03,
+    MonarchDelay = 1.3,
+    ScanInterval = 0.01,
     CastigateMaxDist = 500,
-    MonarchMaxDist = 50,
+    MonarchMaxDist = 300,
     ParryCooldown = 0.3,
     AngleCloseDist = 20,
     AngleFarDist = 50,
@@ -23,13 +23,12 @@ local CONFIG = {
 local lastPressTick = 0
 local seenCastigates = {}
 local parriedCrosses = {}
-local seenGlares = {}
-local parriedGlares = {}
 local running = true
 local toggleDebounce = false
 local wasTDown = false
 local lastToggleTime = 0
 local STATIC_GLARE_ADDR = nil
+local glareActive = false
 local function clamp(v, lo, hi)
     return v < lo and lo or (v > hi and hi or v)
 end
@@ -164,7 +163,7 @@ local function pressF(delay)
     if now - lastPressTick < CONFIG.ParryCooldown then return false end
     lastPressTick = now
     local jitter = (math.random() * 0.04) - 0.02
-    local actual = math.max(0, delay * 0.85 + jitter)
+    local actual = math.max(0, delay + jitter)
     task.spawn(function()
         task.wait(actual)
         pcall(function()
@@ -182,7 +181,7 @@ local function getCurrentCross()
     local cross = safeFind(vis, "Cross")
     if cross then
         local ok, addr = pcall(function() return cross.Address end)
-        return ok and addr and tostring(addr) or nil
+        return ok and addr or nil
     end
     return nil
 end
@@ -193,22 +192,26 @@ local function getCurrentGlare()
     local glare = safeFind(vis, "MonarchGlare")
     if glare then
         local ok, addr = pcall(function() return glare.Address end)
-        if ok and addr then
-            local s = tostring(addr)
-            if s ~= STATIC_GLARE_ADDR then return s end
+        if ok and addr and addr ~= STATIC_GLARE_ADDR then
+            return addr
         end
     end
     return nil
 end
-local function initStaticGlare()
-    local ok, assets = pcall(function() return ReplicatedStorage:FindFirstChild("Assets", true) end)
-    if not ok or not assets then return end
-    local ok2, fx = pcall(function() return assets:FindFirstChild("EffectAssets", true) end)
-    if not ok2 or not fx then return end
-    local ok3, glare = pcall(function() return fx:FindFirstChild("MonarchGlare") end)
-    if ok3 and glare then
-        local ok4, addr = pcall(function() return glare.Address end)
-        if ok4 and addr then STATIC_GLARE_ADDR = tostring(addr) end
+local function initStaticGlareAddr()
+    local static = ReplicatedStorage:FindFirstChild("Assets", true)
+        and ReplicatedStorage.Assets:FindFirstChild("EffectAssets", true)
+        and ReplicatedStorage.Assets.EffectAssets:FindFirstChild("MonarchGlare")
+    if static then
+        STATIC_GLARE_ADDR = static.Address
+    end
+end
+local function cleanupOld(t, timeout)
+    local now = tick()
+    for addr, time in next, t do
+        if type(time) == "number" and now - time > timeout then
+            t[addr] = nil
+        end
     end
 end
 local function doToggle()
@@ -256,26 +259,21 @@ local function parryLoop()
                 end
             end
             if glareAddr then
-                if not seenGlares[glareAddr] then
-                    seenGlares[glareAddr] = now
+                if not seenCastigates[glareAddr] then
+                    seenCastigates[glareAddr] = now
                 end
-                if not parriedGlares[glareAddr] then
+                if not parriedCrosses[glareAddr] then
                     local _, dist, facing = findThreat()
                     if facing and dist and dist <= CONFIG.MonarchMaxDist then
                         if pressF(CONFIG.MonarchDelay) then
-                            parriedGlares[glareAddr] = true
+                            parriedCrosses[glareAddr] = true
                         end
                     end
                 end
             end
         end
-        local cleanupNow = tick()
-        for addr, time in next, seenCastigates do
-            if cleanupNow - time > 3 then seenCastigates[addr] = nil end
-        end
-        for addr, time in next, seenGlares do
-            if cleanupNow - time > 3 then seenGlares[addr] = nil end
-        end
+        cleanupOld(seenCastigates, 3)
+        cleanupOld(parriedCrosses, 3)
         task.wait(CONFIG.ScanInterval)
     end
 end
@@ -283,10 +281,8 @@ _G.LookParryCleanup = function()
     running = false
     seenCastigates = {}
     parriedCrosses = {}
-    seenGlares = {}
-    parriedGlares = {}
     lastPressTick = 0
     CONFIG.AutoParryEnabled = true
 end
-initStaticGlare()
+initStaticGlareAddr()
 task.spawn(parryLoop)
