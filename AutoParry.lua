@@ -6,10 +6,12 @@ local VK_F = 0x46
 local VK_T = 0x54
 local CONFIG = {
     CastigateDelay = 0.39,
-    MonarchDelay = 1.3,
+    MonarchDelay = 1.25,
     ScanInterval = 0.01,
     CastigateMaxDist = 500,
-    MonarchMaxDist = 300,
+    MonarchMaxDist = 50,
+    PhoenixDelay = 1.5,
+    PhoenixMaxDist = 50,
     ParryCooldown = 0.3,
     AngleCloseDist = 20,
     AngleFarDist = 50,
@@ -17,6 +19,7 @@ local CONFIG = {
     AngleFar = 17,
     CrossEnabled = true,
     GlareEnabled = true,
+    PhoenixEnabled = true,
     AutoParryEnabled = true,
     BlockedPatterns = {"emptydummy", "emptymodel", "dummy", "placeholder", "testdummy", "training", "bot", "npc", "mob"},
 }
@@ -28,6 +31,7 @@ local toggleDebounce = false
 local wasTDown = false
 local lastToggleTime = 0
 local STATIC_GLARE_ADDR = nil
+local STATIC_PHOENIX_ADDR = nil
 local glareActive = false
 local function clamp(v, lo, hi)
     return v < lo and lo or (v > hi and hi or v)
@@ -198,12 +202,33 @@ local function getCurrentGlare()
     end
     return nil
 end
+local function getCurrentPhoenix()
+    if not LocalPlayer or not LocalPlayer.PlayerGui then return nil end
+    local vis = safeFind(LocalPlayer.PlayerGui, "VisualEffects", true)
+    if not vis then return nil end
+    local phoenix = safeFind(vis, "PhoenixGlare")
+    if phoenix then
+        local ok, addr = pcall(function() return phoenix.Address end)
+        if ok and addr and addr ~= STATIC_PHOENIX_ADDR then
+            return addr
+        end
+    end
+    return nil
+end
 local function initStaticGlareAddr()
     local static = ReplicatedStorage:FindFirstChild("Assets", true)
         and ReplicatedStorage.Assets:FindFirstChild("EffectAssets", true)
         and ReplicatedStorage.Assets.EffectAssets:FindFirstChild("MonarchGlare")
     if static then
         STATIC_GLARE_ADDR = static.Address
+    end
+end
+local function initStaticPhoenixAddr()
+    local static = ReplicatedStorage:FindFirstChild("Assets", true)
+        and ReplicatedStorage.Assets:FindFirstChild("EffectAssets", true)
+        and ReplicatedStorage.Assets.EffectAssets:FindFirstChild("PhoenixGlare")
+    if static then
+        STATIC_PHOENIX_ADDR = static.Address
     end
 end
 local function cleanupOld(t, timeout)
