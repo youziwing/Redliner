@@ -721,4 +721,4 @@ local function mainLoop()
     task_spawn(hurtboxLoop)
 end
 mainLoop()
-notify("Vault", "ESP 60 FPS + Aura Loaded", 5)
+notify("Vault", "Cutie Patootie", 5)
