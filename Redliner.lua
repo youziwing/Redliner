@@ -9,7 +9,8 @@ local CONFIG = {
     ESP = { Weapon = true }, ESP_RANGE = 300,
     HURTBOX_TARGET_SIZE = V3(25, 25, 25), HURTBOX_SCAN_INTERVAL = 5,
     KNOWN_WEAPONS = {"Castigate","Phoenix","Siege","Monarch"},
-    BLOCKED = {"emptydummy","emptymodel","dummy","placeholder"}
+    BLOCKED = {"emptydummy","emptymodel","dummy","placeholder"},
+    TEAM_CHECK = true
 }
 local STATE = {
     enabled = true, lastAttack = 0, target = nil, targets = {}, lastAura = 0,
@@ -17,31 +18,76 @@ local STATE = {
     debounce = {}, espObjs = {}, healthCache = {}, cachedTargets = {}, lastScan = 0,
     players = {}, running = true
 }
+
+-- === TEAM CHECK v4 ===
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local cachedUserIds, cachedFolderIds = {}, {}
+
+local function toUnsigned(s) return s >= 0 and s or s + 4294967296 end
+
+local function getRealUserId(p)
+    if not p then return -1 end
+    if cachedUserIds[p.Name] then return cachedUserIds[p.Name] end
+    local id = -1
+    pcall(function() if memory_read and p.Address then id = toUnsigned(memory_read("int", p.Address + 760)) end end)
+    cachedUserIds[p.Name] = id
+    return id
+end
+
+local function getTeamId(uid)
+    if uid == -1 then return -1 end
+    local md = ReplicatedStorage:FindFirstChild("ReadOnly") and ReplicatedStorage.ReadOnly:FindFirstChild("Match")
+    if not md then return -1 end
+    local pf = md:FindFirstChild("Players")
+    if not pf then return -1 end
+    local f = pf:FindFirstChild(tostring(uid))
+    return f and tonumber(f:GetAttribute("team_id")) or -1
+end
+
+local function refreshFolders()
+    cachedFolderIds = {}
+    local md = ReplicatedStorage:FindFirstChild("ReadOnly") and ReplicatedStorage.ReadOnly:FindFirstChild("Match")
+    local pf = md and md:FindFirstChild("Players")
+    if not pf then return end
+    for _, f in ipairs(pf:GetChildren()) do
+        local uid = tonumber(f.Name)
+        if uid then cachedFolderIds[uid] = tonumber(f:GetAttribute("team_id")) or -1 end
+    end
+end
+
+local function isEnemy(p)
+    if p == LocalPlayer then return false end
+    local myId, theirId = getRealUserId(LocalPlayer), getRealUserId(p)
+    if myId == -1 or theirId == -1 then return true end
+    local myTeam, theirTeam = getTeamId(myId), getTeamId(theirId)
+    if theirTeam == -1 then theirTeam = cachedFolderIds[theirId] or -1 end
+    if myTeam == -1 or theirTeam == -1 then return true end
+    return myTeam ~= theirTeam
+end
+
+local function isTeammate(p) return p == LocalPlayer or not isEnemy(p) end
+
+_G.TeamCheck = { isEnemy = isEnemy, isTeammate = isTeammate, getTeamId = function(p) return getTeamId(getRealUserId(p)) end, getRealUserId = getRealUserId }
+-- === END TEAM CHECK ===
+
 local function safe(f, ...) local ok, r = pcall(f, ...) return ok and r or nil end
 local function notify(t, m, d) safe(function() (_G.notify or notify)(t, m, d) end) end
-local function getSvc(n) return safe(function() return game:GetService(n) end) end
-local Players = getSvc("Players")
-local UIS = getSvc("UserInputService")
-local function getLP() return safe(function() return Players.LocalPlayer end) end
-local function getChar(p) return safe(function() return (p or getLP()).Character end) end
+local UIS = safe(function() return game:GetService("UserInputService") end)
+local function getLP() return LocalPlayer end
+local function getChar(p) return safe(function() return (p or LocalPlayer).Character end) end
 local function getPart(c, n) return safe(function() return c:FindFirstChild(n) end) end
 local function getPos(p) return safe(function() return p.Position end) end
 local function getMyPos() local c = getChar() return c and getPos(getPart(c, "HumanoidRootPart")) end
-local function isSelf(t) local lp = getLP() return t == lp or (lp and t and safe(function() return t.Name == lp.Name end)) end
+local function isSelf(t) return t == LocalPlayer or (LocalPlayer and t and safe(function() return t.Name == LocalPlayer.Name end)) end
 local function blocked(n) if not n then return true end local l = lower(n) for _, p in ipairs(CONFIG.BLOCKED) do if find(l, p, 1, true) then return true end end return false end
 local function dist2(a, b) if not a or not b then return huge end local dx, dy, dz = b.X-a.X, b.Y-a.Y, b.Z-a.Z return dx*dx+dy*dy+dz*dz end
 local function hColor(pct)
     pct = min(1, max(0, pct))
-    if pct >= 0.7 then
-        local t = (pct - 0.7) / 0.3
-        return C3(floor(255 * (1 - t)), 255, 0)
-    elseif pct >= 0.3 then
-        local t = (pct - 0.3) / 0.4
-        return C3(255, 255, floor(255 * (1 - t)))
-    else
-        local t = pct / 0.3
-        return C3(255, floor(255 * t), 0)
-    end
+    if pct >= 0.7 then local t = (pct - 0.7) / 0.3 return C3(floor(255 * (1 - t)), 255, 0)
+    elseif pct >= 0.3 then local t = (pct - 0.3) / 0.4 return C3(255, 255, floor(255 * (1 - t)))
+    else local t = pct / 0.3 return C3(255, floor(255 * t), 0) end
 end
 local function getHealth(p)
     local c = STATE.healthCache[p]
@@ -75,9 +121,10 @@ local function getWeapon(p, c)
 end
 local function scanTargets()
     local t, myPos = {}, getMyPos() if not myPos then return t end
-    local lp, rsq = getLP(), CONFIG.AURA_RANGE*CONFIG.AURA_RANGE
+    local lp, rsq = LocalPlayer, CONFIG.AURA_RANGE*CONFIG.AURA_RANGE
     for _, p in ipairs(safe(function() return Players:GetPlayers() end) or {}) do
         if p ~= lp and not isSelf(p) then
+            if CONFIG.TEAM_CHECK and not isEnemy(p) then continue end
             local n = safe(function() return p.Name end)
             if n and not blocked(n) then
                 local h = getHealth(p)
@@ -133,7 +180,8 @@ local function scanHurtboxes()
     for _, o in ipairs(safe(function() return e:GetDescendants() end) or {}) do processHurtbox(o) end
 end
 local function makeESP(p)
-    local lp = getLP() if not lp or p == lp or isSelf(p) then return end
+    local lp = LocalPlayer if not lp or p == lp or isSelf(p) then return end
+    if CONFIG.TEAM_CHECK and not isEnemy(p) then return end
     local n = safe(function() return p.Name end) if not n or blocked(n) or STATE.espObjs[p] then return end
     local function txt() local t = Draw("Text") t.Size = 13 t.Font = Drawing.Fonts.System t.Outline = true t.Center = true t.Visible = false t.ZIndex = 3 return t end
     local hp, pp, wp = txt(), txt(), txt()
@@ -147,11 +195,12 @@ local function removeESP(p)
 end
 local function updateESP()
     if not STATE.espOn then return end
-    local lp, myPos = getLP(), getMyPos() if not lp then return end
+    local lp, myPos = LocalPlayer, getMyPos() if not lp then return end
     local rsq = CONFIG.ESP_RANGE * CONFIG.ESP_RANGE
     local now = tick()
     for p, d in next, STATE.espObjs do
         if p == lp or isSelf(p) then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
+        if CONFIG.TEAM_CHECK and not isEnemy(p) then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
         local c = getChar(p)
         if c ~= d.lastChar then
             d.lastChar = c d.maxCache = nil d.wepCache = nil d.wepTime = 0
@@ -179,18 +228,19 @@ local function updateESP()
 end
 local function updatePlayers()
     if not STATE.espOn then return end
-    local lp = getLP() if not lp then return end
+    local lp = LocalPlayer if not lp then return end
     local all = safe(function() return Players:GetPlayers() end) or {}
-    for _, p in ipairs(all) do if p ~= lp and not isSelf(p) and not STATE.players[p] then STATE.players[p] = true makeESP(p) end end
+    for _, p in ipairs(all) do if p ~= lp and not isSelf(p) and not STATE.players[p] then if CONFIG.TEAM_CHECK and not isEnemy(p) then continue end STATE.players[p] = true makeESP(p) end end
     for p in next, STATE.players do local here = false for _, v in ipairs(all) do if v == p then here = true break end end if not here then STATE.players[p] = nil removeESP(p) end end
 end
 local function doCleanup()
     STATE.running = false STATE.enabled = false STATE.target = nil
     for p, d in next, STATE.espObjs do if d then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end end end
     STATE.espObjs = {} STATE.healthCache = {} STATE.cachedTargets = {} STATE.players = {} STATE.hurtboxSeen = {} STATE.entities = nil
+    cachedUserIds = {} cachedFolderIds = {}
 end
 _G.VaultCleanup = doCleanup
-local function isValid() return Players and getLP() and safe(function() return game.PlaceId end) ~= nil end
+local function isValid() return Players and LocalPlayer and safe(function() return game.PlaceId end) ~= nil end
 local function onKey(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode[CONFIG.TOGGLE_KEY:upper()] then
@@ -209,14 +259,22 @@ local function onKey(input, gp)
         if STATE.hitboxLarge then CONFIG.HURTBOX_TARGET_SIZE = V3(25, 25, 25) notify("Vault", "Hitbox: LARGE", 3) else CONFIG.HURTBOX_TARGET_SIZE = V3(2.1, 2.1, 1.05) notify("Vault", "Hitbox: NORMAL", 3) end
         STATE.hurtboxSeen = {} safe(scanHurtboxes) wait(0.3) STATE.debounce.hitbox = false
     end
+    if input.KeyCode == Enum.KeyCode.T then
+        if STATE.debounce.team then return end STATE.debounce.team = true CONFIG.TEAM_CHECK = not CONFIG.TEAM_CHECK notify("Vault", "Team Check: " .. (CONFIG.TEAM_CHECK and "ON" or "OFF"), 3) STATE.cachedTargets = {} STATE.hurtboxSeen = {} wait(0.3) STATE.debounce.team = false
+    end
 end
-if UIS then UIS.InputBegan:Connect(onKey) end
+if UIS then safe(function() UIS.InputBegan:Connect(onKey) end) end
 local function main()
     STATE.enabled = true STATE.target = nil
-    local lp = nil for _ = 1, 100 do lp = getLP() if lp then break end wait(0.1) end if not lp then return end
-    for _, p in ipairs(safe(function() return Players:GetPlayers() end) or {}) do if p ~= lp and not isSelf(p) and STATE.espOn then makeESP(p) STATE.players[p] = true end end
-    if STATE.espObjs[lp] then removeESP(lp) end
+    if not LocalPlayer then for _ = 1, 100 do if Players and Players.LocalPlayer then LocalPlayer = Players.LocalPlayer break end wait(0.1) end end
+    if not LocalPlayer then return end
+    for _, p in ipairs(safe(function() return Players:GetPlayers() end) or {}) do if p ~= LocalPlayer then getRealUserId(p) end end
+    refreshFolders()
+    for _, p in ipairs(safe(function() return Players:GetPlayers() end) or {}) do if p ~= LocalPlayer and not isSelf(p) and STATE.espOn then if CONFIG.TEAM_CHECK and not isEnemy(p) then continue end makeESP(p) STATE.players[p] = true end end
+    if STATE.espObjs[LocalPlayer] then removeESP(LocalPlayer) end
     local lastId = safe(function() return game.PlaceId end) or 0
+    spawn(function() while STATE.running do safe(refreshFolders) wait(3) end end)
+    spawn(function() while STATE.running do safe(function() for _, p in ipairs(safe(function() return Players:GetPlayers() end) or {}) do if p ~= LocalPlayer then getRealUserId(p) end end end) wait(2) end end)
     spawn(function() while STATE.running do safe(updateESP) local s = tick() wait(0.008) if tick()-s > 0.05 then wait(0.001) end local cid = safe(function() return game.PlaceId end) if not cid or cid ~= lastId then doCleanup() break end if not safe(function() return Players.LocalPlayer end) then doCleanup() break end end end)
     spawn(function() while STATE.running do if STATE.enabled then safe(updateAura) end wait(0.01) end end)
     spawn(function() while STATE.running do safe(updatePlayers) wait(0.5) end end)
