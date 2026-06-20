@@ -1,714 +1,226 @@
-local pcall = pcall
-local tick = tick
-local task_wait = task.wait
-local task_spawn = task.spawn
-local ipairs = ipairs
-local next = next
-local tostring = tostring
-local math_floor = math.floor
-local math_sqrt = math.sqrt
-local math_huge = math.huge
-local table_insert = table.insert
-local string_lower = string.lower
-local string_find = string.find
-local Vector3_new = Vector3.new
-local Vector2_new = Vector2.new
-local Color3_fromRGB = Color3.fromRGB
-local Drawing_new = Drawing.new
+local pcall, tick, wait, spawn = pcall, tick, task.wait, task.spawn
+local ipairs, next, tostring, floor, sqrt, huge, insert, lower, find, min, max = ipairs, next, tostring, math.floor, math.sqrt, math.huge, table.insert, string.lower, string.find, math.min, math.max
+local V3, V2, C3, Draw = Vector3.new, Vector2.new, Color3.fromRGB, Drawing.new
 local CONFIG = {
-    AURA_RANGE = 38,
-    AURA_ANGLE = 180,
-    AUTO_ATTACK = true,
-    ATTACK_COOLDOWN = 0.15,
-    AURA_INTERVAL = 0.020,
-    PARRY_USE_PRESS_RELEASE = true,
-    PARRY_DOUBLE_TAP = false,
-    PARRY_DOUBLE_TAP_DELAY = 0.05,
-    PARRY_REQUIRE_FOCUS = true,
-    PARRY_VERIFY_TARGET = true,
-    TOGGLE_KEY = "r",
-    ESP_TOGGLE_KEY = "p",
-    HITBOX_TOGGLE_KEY = "h", 
-    ESP = {
-        Weapon = true,
-    },
-    ESP_RANGE = 300,
-    HURTBOX_TARGET_SIZE = Vector3_new(25, 25, 25),
-    HURTBOX_SCAN_INTERVAL = 5,
+    AURA_RANGE = 38, AURA_ANGLE = 180, AUTO_ATTACK = true, ATTACK_COOLDOWN = 0.15,
+    AURA_INTERVAL = 0.020, PARRY_USE_PRESS_RELEASE = true, PARRY_DOUBLE_TAP = false,
+    PARRY_DOUBLE_TAP_DELAY = 0.05, PARRY_REQUIRE_FOCUS = true, PARRY_VERIFY_TARGET = true,
+    TOGGLE_KEY = "r", ESP_TOGGLE_KEY = "p", HITBOX_TOGGLE_KEY = "h",
+    ESP = { Weapon = true }, ESP_RANGE = 300,
+    HURTBOX_TARGET_SIZE = V3(25, 25, 25), HURTBOX_SCAN_INTERVAL = 5,
+    KNOWN_WEAPONS = {"Castigate","Phoenix","Siege","Monarch"},
+    BLOCKED = {"emptydummy","emptymodel","dummy","placeholder"}
 }
-local KNOWN_WEAPONS = {"Castigate", "Phoenix", "Siege", "Monarch"}
 local STATE = {
-    enabled = true,
-    lastAttack = 0,
-    currentTarget = nil,
-    targetsInRange = {},
-    lastAuraUpdate = 0,
-    espEnabled = true,
-    hurtboxSeen = {},
-    entitiesFolder = nil,
-    hitboxLarge = true, 
+    enabled = true, lastAttack = 0, target = nil, targets = {}, lastAura = 0,
+    espOn = true, hurtboxSeen = {}, entities = nil, hitboxLarge = true,
+    debounce = {}, espObjs = {}, healthCache = {}, cachedTargets = {}, lastScan = 0,
+    players = {}, running = true
 }
-local BLOCKED_PATTERNS = {
-    "emptydummy",
-    "emptymodel",
-    "dummy",
-    "placeholder",
-}
-local UserInputService = game:GetService("UserInputService")
-local toggleDebounce = false
-local espToggleDebounce = false
-local hitboxToggleDebounce = false 
-local function onKeyPress(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode[CONFIG.TOGGLE_KEY:upper()] then
-        if toggleDebounce then return end
-        toggleDebounce = true
-        CONFIG.AUTO_ATTACK = not CONFIG.AUTO_ATTACK
-        notify("Vault", "Auto Attack: " .. (CONFIG.AUTO_ATTACK and "ON" or "OFF"), 3)
-        task_wait(0.3)
-        toggleDebounce = false
-    end
-    if input.KeyCode == Enum.KeyCode[CONFIG.ESP_TOGGLE_KEY:upper()] then
-        if espToggleDebounce then return end
-        espToggleDebounce = true
-        STATE.espEnabled = not STATE.espEnabled
-        if not STATE.espEnabled then
-            if espObjects then
-                for p, d in next, espObjects do
-                    if d then
-                        if d.hpText then
-                            pcall(function() d.hpText.Visible = false end)
-                            pcall(function() d.hpText:Remove() end)
-                        end
-                        if d.postureText then
-                            pcall(function() d.postureText.Visible = false end)
-                            pcall(function() d.postureText:Remove() end)
-                        end
-                        if d.weaponText then
-                            pcall(function() d.weaponText.Visible = false end)
-                            pcall(function() d.weaponText:Remove() end)
-                        end
-                    end
-                end
-            end
-            espObjects = {}
-            healthCache = {}
-            cachedTargets = {}
-            lastPlayerList = {}
-            notify("Vault", "ESP: REMOVED", 3)
-        else
-            notify("Vault", "ESP: ON", 3)
-        end
-        task_wait(0.3)
-        espToggleDebounce = false
-    end
-    if input.KeyCode == Enum.KeyCode[CONFIG.HITBOX_TOGGLE_KEY:upper()] then
-        if hitboxToggleDebounce then return end
-        hitboxToggleDebounce = true
-        STATE.hitboxLarge = not STATE.hitboxLarge
-        if STATE.hitboxLarge then
-            CONFIG.HURTBOX_TARGET_SIZE = Vector3_new(25, 25, 25)
-            notify("Vault", "Hitbox: LARGE", 3)
-        else
-            CONFIG.HURTBOX_TARGET_SIZE = Vector3_new(2.1, 2.1, 1.05)
-            notify("Vault", "Hitbox: NOMRAL", 3)
-        end
-        STATE.hurtboxSeen = {}
-        pcall(scanHurtboxes)
-        task_wait(0.3)
-        hitboxToggleDebounce = false
+local function safe(f, ...) local ok, r = pcall(f, ...) return ok and r or nil end
+local function notify(t, m, d) safe(function() (_G.notify or notify)(t, m, d) end) end
+local function getSvc(n) return safe(function() return game:GetService(n) end) end
+local Players = getSvc("Players")
+local UIS = getSvc("UserInputService")
+local function getLP() return safe(function() return Players.LocalPlayer end) end
+local function getChar(p) return safe(function() return (p or getLP()).Character end) end
+local function getPart(c, n) return safe(function() return c:FindFirstChild(n) end) end
+local function getPos(p) return safe(function() return p.Position end) end
+local function getMyPos() local c = getChar() return c and getPos(getPart(c, "HumanoidRootPart")) end
+local function isSelf(t) local lp = getLP() return t == lp or (lp and t and safe(function() return t.Name == lp.Name end)) end
+local function blocked(n) if not n then return true end local l = lower(n) for _, p in ipairs(CONFIG.BLOCKED) do if find(l, p, 1, true) then return true end end return false end
+local function dist2(a, b) if not a or not b then return huge end local dx, dy, dz = b.X-a.X, b.Y-a.Y, b.Z-a.Z return dx*dx+dy*dy+dz*dz end
+local function hColor(pct)
+    pct = min(1, max(0, pct))
+    if pct >= 0.7 then
+        local t = (pct - 0.7) / 0.3
+        return C3(floor(255 * (1 - t)), 255, 0)
+    elseif pct >= 0.3 then
+        local t = (pct - 0.3) / 0.4
+        return C3(255, 255, floor(255 * (1 - t)))
+    else
+        local t = pct / 0.3
+        return C3(255, floor(255 * t), 0)
     end
 end
-UserInputService.InputBegan:Connect(onKeyPress)
-local function getLocalPlayer()
-    local ok, svc = pcall(function() return game:GetService("Players") end)
-    if not ok or not svc then return nil end
-    local ok2, lp = pcall(function() return svc.LocalPlayer end)
-    return ok2 and lp or nil
-end
-local function getMyPosition()
-    local lp = getLocalPlayer()
-    if not lp then return nil end
-    local ok, char = pcall(function() return lp.Character end)
-    if not ok or not char then return nil end
-    local ok2, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
-    if not ok2 or not root then return nil end
-    local ok3, pos = pcall(function() return root.Position end)
-    return ok3 and pos or nil
-end
-local function isSelf(target)
-    local lp = getLocalPlayer()
-    if not lp or not target then return false end
-    if target == lp then return true end
-    local ok, tName = pcall(function() return target.Name end)
-    local ok2, mName = pcall(function() return lp.Name end)
-    return ok and ok2 and tName == mName
-end
-local function isBlockedName(name)
-    if not name then return true end
-    local lower = string_lower(name)
-    for _, pattern in next, BLOCKED_PATTERNS do
-        if string_find(lower, pattern, 1, true) then
-            return true
-        end
+local function getHealth(p)
+    local c = STATE.healthCache[p]
+    if not c or tick()-c.t > 2 then
+        c = {t = tick()}
+        local ro = safe(function() return p:FindFirstChild("ReadOnly") end)
+        if ro then c.h = safe(function() return ro:FindFirstChild("health") end) c.m = safe(function() for _, n in ipairs({"maxhealth","maxHealth","MaxHealth","HealthMax"}) do local v = ro:FindFirstChild(n) if v then return v end end end) c.i = safe(function() for _, n in ipairs({"impact","Impact","posture","Posture","stun","Stun"}) do local v = ro:FindFirstChild(n) if v then return v end end end) end
+        STATE.healthCache[p] = c
     end
-    return false
+    if c.h then local v = safe(function() return c.h.Value end) if v ~= nil then return v end end
+    local hum = safe(function() return getChar(p):FindFirstChildOfClass("Humanoid") end)
+    return hum and safe(function() return hum.Health end)
 end
-local function searchFolder(folder)
-    if not folder then return nil end
-    local ok, children = pcall(function() return folder:GetChildren() end)
-    if not ok or not children then return nil end
-    for _, child in ipairs(children) do
-        local okN, cName = pcall(function() return child.Name end)
-        if okN and cName then
-            local name = string_lower(cName)
-            for _, wName in ipairs(KNOWN_WEAPONS) do
-                if string_find(name, string_lower(wName), 1, true) then
-                    return wName
-                end
-            end
-        end
-    end
+local function getMaxHealth(p)
+    local c = STATE.healthCache[p]
+    if c and c.m then local v = safe(function() return c.m.Value end) if v ~= nil then return v end end
+    local hum = safe(function() return getChar(p):FindFirstChildOfClass("Humanoid") end)
+    return hum and safe(function() return hum.MaxHealth end)
+end
+local function getPosture(p)
+    local c = STATE.healthCache[p]
+    if c and c.i then local v = safe(function() return c.i.Value end) if v ~= nil then return v end end
+    local ro = safe(function() return p:FindFirstChild("ReadOnly") end)
+    if not ro then return nil end
+    for _, n in ipairs({"impact","Impact","posture","Posture","stun","Stun"}) do local v = safe(function() local o = ro:FindFirstChild(n) return o and o.Value end) if v ~= nil then return v end end
     return nil
 end
-local function getWeaponName(player, character)
-    local result = searchFolder(character)
-    if result then return result end
-    local ok, backpack = pcall(function() return player:FindFirstChild("Backpack") end)
-    if ok and backpack then
-        result = searchFolder(backpack)
-        if result then return result end
-    end
-    return "None"
+local function getWeapon(p, c)
+    local function search(f) if not f then return nil end for _, ch in ipairs(safe(function() return f:GetChildren() end) or {}) do local n = safe(function() return ch.Name end) if n then local l = lower(n) for _, w in ipairs(CONFIG.KNOWN_WEAPONS) do if find(l, lower(w), 1, true) then return w end end end end return nil end
+    return search(c) or search(safe(function() return p:FindFirstChild("Backpack") end)) or "None"
 end
-local healthCache = {}
-local function buildHealthCache(player)
-    local cache = { healthVal = nil, maxVal = nil, impactVal = nil, lastBuild = tick() }
-    local ok, ro = pcall(function() return player:FindFirstChild("ReadOnly") end)
-    if ok and ro then
-        local ok2, hv = pcall(function() return ro:FindFirstChild("health") end)
-        if ok2 and hv then cache.healthVal = hv end
-        local maxNames = {"maxhealth", "maxHealth", "MaxHealth", "HealthMax"}
-        for _, n in ipairs(maxNames) do
-            local ok3, mv = pcall(function() return ro:FindFirstChild(n) end)
-            if ok3 and mv then cache.maxVal = mv break end
-        end
-        local altNames = {"impact", "Impact", "posture", "Posture", "stun", "Stun"}
-        for _, n in ipairs(altNames) do
-            local ok4, iv = pcall(function() return ro:FindFirstChild(n) end)
-            if ok4 and iv then cache.impactVal = iv break end
-        end
-    end
-    healthCache[player] = cache
-    return cache
-end
-local function getHealthCache(player)
-    local cache = healthCache[player]
-    if not cache or (tick() - cache.lastBuild > 2) then
-        cache = buildHealthCache(player)
-    end
-    return cache
-end
-local function getHealth(player)
-    local cache = getHealthCache(player)
-    if cache.healthVal then
-        local ok, val = pcall(function() return cache.healthVal.Value end)
-        if ok and val ~= nil then return val end
-    end
-    local ok, char = pcall(function() return player.Character end)
-    if ok and char then
-        local ok2, hum = pcall(function() return char:FindFirstChildOfClass("Humanoid") end)
-        if ok2 and hum then
-            local ok3, h = pcall(function() return hum.Health end)
-            if ok3 and h ~= nil then return h end
-        end
-    end
-    return nil
-end
-local function getMaxHealth(player)
-    local cache = getHealthCache(player)
-    if cache.maxVal then
-        local ok, val = pcall(function() return cache.maxVal.Value end)
-        if ok and val ~= nil then return val end
-    end
-    local ok, char = pcall(function() return player.Character end)
-    if ok and char then
-        local ok2, hum = pcall(function() return char:FindFirstChildOfClass("Humanoid") end)
-        if ok2 and hum then
-            local ok3, m = pcall(function() return hum.MaxHealth end)
-            if ok3 and m ~= nil then return m end
-        end
-    end
-    return nil
-end
-local function getPosture(player)
-    local cache = getHealthCache(player)
-    if cache.impactVal then
-        local ok, val = pcall(function() return cache.impactVal.Value end)
-        if ok and val ~= nil then return val end
-    end
-    local ok, ro = pcall(function() return player:FindFirstChild("ReadOnly") end)
-    if not ok or not ro then return nil end
-    local altNames = {"impact", "Impact", "posture", "Posture", "stun", "Stun"}
-    for _, n in ipairs(altNames) do
-        local ok2, val = pcall(function()
-            local v = ro:FindFirstChild(n)
-            return v and v.Value
-        end)
-        if ok2 and val ~= nil then return val end
-    end
-    return nil
-end
-local function distanceSq(posA, posB)
-    if not posA or not posB then return math_huge end
-    local dx = posB.X - posA.X
-    local dy = posB.Y - posA.Y
-    local dz = posB.Z - posA.Z
-    return dx*dx + dy*dy + dz*dz
-end
-local cachedTargets = {}
-local lastTargetScan = 0
 local function scanTargets()
-    local targets = {}
-    local myPos = getMyPosition()
-    if not myPos then return targets end
-    local lp = getLocalPlayer()
-    if not lp then return targets end
-    local rangeSq = CONFIG.AURA_RANGE * CONFIG.AURA_RANGE
-    local ok, all = pcall(function() return game:GetService("Players"):GetPlayers() end)
-    if not ok or not all then return targets end
-    for i = 1, #all do
-        local p = all[i]
+    local t, myPos = {}, getMyPos() if not myPos then return t end
+    local lp, rsq = getLP(), CONFIG.AURA_RANGE*CONFIG.AURA_RANGE
+    for _, p in ipairs(safe(function() return Players:GetPlayers() end) or {}) do
         if p ~= lp and not isSelf(p) then
-            local okN, name = pcall(function() return p.Name end)
-            if okN and name and not isBlockedName(name) then
-                local health = getHealth(p)
-                if health and health > 0 then
-                    local okC, char = pcall(function() return p.Character end)
-                    if okC and char then
-                        local okR, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
-                        if okR and root then
-                            local okH, head = pcall(function() return char:FindFirstChild("Head") end)
-                            local okP, rootPos = pcall(function() return root.Position end)
-                            if okP and rootPos then
-                                local distSq = distanceSq(myPos, rootPos)
-                                if distSq <= rangeSq then
-                                    local headPos = nil
-                                    if head then
-                                        local okHP, hPos = pcall(function() return head.Position end)
-                                        if okHP then headPos = hPos end
-                                    end
-                                    table_insert(targets, {
-                                        player = p,
-                                        root = root,
-                                        health = health,
-                                        maxHealth = getMaxHealth(p) or health,
-                                        distance = math_sqrt(distSq),
-                                        position = headPos or rootPos,
-                                    })
-                                end
-                            end
-                        end
+            local n = safe(function() return p.Name end)
+            if n and not blocked(n) then
+                local h = getHealth(p)
+                if h and h > 0 then
+                    local c = getChar(p)
+                    local r = c and getPart(c, "HumanoidRootPart")
+                    local rp = r and getPos(r)
+                    if rp and dist2(myPos, rp) <= rsq then
+                        local head = getPart(c, "Head")
+                        insert(t, {player = p, root = r, health = h, maxHealth = getMaxHealth(p) or h, dist = sqrt(dist2(myPos, rp)), pos = (head and getPos(head)) or rp})
                     end
                 end
             end
         end
     end
-    return targets
+    return t
 end
-local function getAllTargets()
+local function getTargets() local now = tick() if now - STATE.lastScan >= 0.1 then STATE.cachedTargets = scanTargets() STATE.lastScan = now end return STATE.cachedTargets end
+local function attack()
     local now = tick()
-    if now - lastTargetScan >= 0.1 then
-        cachedTargets = scanTargets()
-        lastTargetScan = now
-    end
-    return cachedTargets
-end
-local function performAttack()
-    local now = tick()
-    if now - STATE.lastAttack < (CONFIG.ATTACK_COOLDOWN - 0.02) then
-        return false
-    end
-    if CONFIG.PARRY_REQUIRE_FOCUS then
-        local okF, focused = pcall(isrbxactive)
-        if okF and not focused then return false end
-    end
+    if now - STATE.lastAttack < CONFIG.ATTACK_COOLDOWN - 0.02 then return false end
+    if CONFIG.PARRY_REQUIRE_FOCUS then local f = safe(isrbxactive) if f == false then return false end end
     STATE.lastAttack = now
     if CONFIG.PARRY_USE_PRESS_RELEASE then
-        if pcall(mouse1press) then
-            if CONFIG.PARRY_DOUBLE_TAP then
-                task_wait(CONFIG.PARRY_DOUBLE_TAP_DELAY)
-                pcall(mouse1release)
-                task_wait(CONFIG.PARRY_DOUBLE_TAP_DELAY)
-                pcall(mouse1press)
-                task_wait(CONFIG.PARRY_DOUBLE_TAP_DELAY)
-                pcall(mouse1release)
-            else
-                task_wait(0.016)
-                pcall(mouse1release)
-            end
+        if safe(mouse1press) then
+            if CONFIG.PARRY_DOUBLE_TAP then wait(CONFIG.PARRY_DOUBLE_TAP_DELAY) safe(mouse1release) wait(CONFIG.PARRY_DOUBLE_TAP_DELAY) safe(mouse1press) wait(CONFIG.PARRY_DOUBLE_TAP_DELAY) safe(mouse1release) else wait(0.016) safe(mouse1release) end
             return true
         end
-        return pcall(mouse1click)
+        return safe(mouse1click) ~= nil
     end
-    return pcall(mouse1click)
+    return safe(mouse1click) ~= nil
 end
 local function updateAura()
     if not STATE.enabled then return end
     local now = tick()
-    if now - STATE.lastAuraUpdate < CONFIG.AURA_INTERVAL then return end
-    STATE.lastAuraUpdate = now
-    local targets = getAllTargets()
-    STATE.targetsInRange = targets
-    if #targets > 0 then
-        local target = targets[1]
-        STATE.currentTarget = target
-        if CONFIG.AUTO_ATTACK then
-            if CONFIG.PARRY_VERIFY_TARGET and target.root then
-                local ok, curPos = pcall(function() return target.root.Position end)
-                local myPos = getMyPosition()
-                if ok and curPos and myPos then
-                    if distanceSq(myPos, curPos) <= CONFIG.AURA_RANGE * CONFIG.AURA_RANGE then
-                        performAttack()
-                    end
-                else
-                    performAttack()
-                end
-            else
-                performAttack()
-            end
-        end
-    else
-        STATE.currentTarget = nil
-    end
+    if now - STATE.lastAura < CONFIG.AURA_INTERVAL then return end
+    STATE.lastAura = now
+    local t = getTargets()
+    STATE.targets = t
+    if #t == 0 then STATE.target = nil return end
+    STATE.target = t[1]
+    if not CONFIG.AUTO_ATTACK then return end
+    if CONFIG.PARRY_VERIFY_TARGET and STATE.target.root then
+        local cp, mp = getPos(STATE.target.root), getMyPos()
+        if cp and mp and dist2(mp, cp) <= CONFIG.AURA_RANGE*CONFIG.AURA_RANGE then attack() else attack() end
+    else attack() end
 end
-local function processHurtbox(obj)
-    if not obj or not obj:IsA("BasePart") then return end
-    if obj.Name ~= "Torso_Hurtbox" then return end
-    if STATE.hurtboxSeen[obj] then return end
-    STATE.hurtboxSeen[obj] = true
-    pcall(function() obj.Size = CONFIG.HURTBOX_TARGET_SIZE end)
-end
+local function processHurtbox(o) if not o or not o:IsA("BasePart") or o.Name ~= "Torso_Hurtbox" or STATE.hurtboxSeen[o] then return end STATE.hurtboxSeen[o] = true safe(function() o.Size = CONFIG.HURTBOX_TARGET_SIZE end) end
 local function scanHurtboxes()
-    local entities = STATE.entitiesFolder
-    if not entities then
-        local ok, ent = pcall(function() return workspace:FindFirstChild("Entities") end)
-        if ok and ent then
-            entities = ent
-            STATE.entitiesFolder = ent
-        else
-            return
-        end
-    end
-    local ok, parent = pcall(function() return entities.Parent end)
-    if not ok or not parent then
-        STATE.entitiesFolder = nil
-        STATE.hurtboxSeen = {}
-        return
-    end
-    local ok2, descendants = pcall(function() return entities:GetDescendants() end)
-    if not ok2 or not descendants then return end
-    for _, obj in ipairs(descendants) do
-        processHurtbox(obj)
-    end
+    local e = STATE.entities
+    if not e then e = safe(function() return workspace:FindFirstChild("Entities") end) if e then STATE.entities = e else return end end
+    if not safe(function() return e.Parent end) then STATE.entities = nil STATE.hurtboxSeen = {} return end
+    for _, o in ipairs(safe(function() return e:GetDescendants() end) or {}) do processHurtbox(o) end
 end
-local espObjects = {}
-local function healthColor(pct)
-    if pct > 0.5 then
-        local t = (pct - 0.5) * 2
-        return Color3_fromRGB(math_floor(255 * (1 - t)), 255, 0)
-    else
-        local t = pct * 2
-        return Color3_fromRGB(255, math_floor(255 * t), 0)
-    end
+local function makeESP(p)
+    local lp = getLP() if not lp or p == lp or isSelf(p) then return end
+    local n = safe(function() return p.Name end) if not n or blocked(n) or STATE.espObjs[p] then return end
+    local function txt() local t = Draw("Text") t.Size = 13 t.Font = Drawing.Fonts.System t.Outline = true t.Center = true t.Visible = false t.ZIndex = 3 return t end
+    local hp, pp, wp = txt(), txt(), txt()
+    pp.Color = C3(80, 150, 255) wp.Color = C3(255, 180, 100)
+    STATE.espObjs[p] = {hp = hp, pp = pp, wp = wp, lastChar = nil, maxCache = nil, wepCache = nil, wepTime = 0, head = nil, root = nil}
 end
-local function createESP(player)
-    local lp = getLocalPlayer()
-    if not lp then return end
-    if player == lp or isSelf(player) then return end
-    local okN, name = pcall(function() return player.Name end)
-    if not okN or not name or isBlockedName(name) then return end
-    if espObjects[player] then return end
-    local hp = Drawing_new("Text")
-    hp.Size = 13
-    hp.Font = Drawing.Fonts.System
-    hp.Outline = true
-    hp.Center = true
-    hp.Visible = false
-    hp.ZIndex = 3
-    local posture = Drawing_new("Text")
-    posture.Size = 13
-    posture.Font = Drawing.Fonts.System
-    posture.Outline = true
-    posture.Center = true
-    posture.Color = Color3_fromRGB(80, 150, 255)
-    posture.Visible = false
-    posture.ZIndex = 3
-    local weapon = Drawing_new("Text")
-    weapon.Size = 13
-    weapon.Font = Drawing.Fonts.System
-    weapon.Outline = true
-    weapon.Center = true
-    weapon.Color = Color3_fromRGB(255, 180, 100)
-    weapon.Visible = false
-    weapon.ZIndex = 3
-    espObjects[player] = {
-        hpText = hp,
-        postureText = posture,
-        weaponText = weapon,
-        lastChar = nil,
-        cachedMax = nil,
-        cachedWeapon = nil,
-        lastWeaponUpdate = 0,
-        refs = { head = nil, root = nil },
-    }
-end
-local function removeESP(player)
-    local data = espObjects[player]
-    if data then
-        if data.hpText then
-            pcall(function() data.hpText.Visible = false end)
-            pcall(function() data.hpText:Remove() end)
-        end
-        if data.postureText then
-            pcall(function() data.postureText.Visible = false end)
-            pcall(function() data.postureText:Remove() end)
-        end
-        if data.weaponText then
-            pcall(function() data.weaponText.Visible = false end)
-            pcall(function() data.weaponText:Remove() end)
-        end
-        espObjects[player] = nil
-        healthCache[player] = nil
-    end
+local function removeESP(p)
+    local d = STATE.espObjs[p] if not d then return end
+    for _, k in ipairs({"hp","pp","wp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end
+    STATE.espObjs[p] = nil STATE.healthCache[p] = nil
 end
 local function updateESP()
-    if not STATE.espEnabled then return end
-    local lp = getLocalPlayer()
-    if not lp then return end
-    if not espObjects then return end
-    local myPos = getMyPosition()
-    local espRangeSq = CONFIG.ESP_RANGE * CONFIG.ESP_RANGE
+    if not STATE.espOn then return end
+    local lp, myPos = getLP(), getMyPos() if not lp then return end
+    local rsq = CONFIG.ESP_RANGE * CONFIG.ESP_RANGE
     local now = tick()
-    for player, data in next, espObjects do
-        if player == lp or isSelf(player) then
-            data.hpText.Visible = false
-            data.postureText.Visible = false
-            data.weaponText.Visible = false
-            continue
+    for p, d in next, STATE.espObjs do
+        if p == lp or isSelf(p) then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
+        local c = getChar(p)
+        if c ~= d.lastChar then
+            d.lastChar = c d.maxCache = nil d.wepCache = nil d.wepTime = 0
+            d.head = c and getPart(c, "Head") d.root = c and getPart(c, "HumanoidRootPart")
         end
-        local char = nil
-        local okC, c = pcall(function() return player.Character end)
-        if okC then char = c end
-        if char ~= data.lastChar then
-            data.lastChar = char
-            data.cachedMax = nil
-            data.cachedWeapon = nil
-            data.lastWeaponUpdate = 0
-            if char then
-                local okH, head = pcall(function() return char:FindFirstChild("Head") end)
-                local okR, root = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
-                data.refs.head = okH and head or nil
-                data.refs.root = okR and root or nil
-            else
-                data.refs.head = nil
-                data.refs.root = nil
-            end
-        end
-        local head = data.refs.head
-        if not head then
-            data.hpText.Visible = false
-            data.postureText.Visible = false
-            data.weaponText.Visible = false
-            continue
-        end
-        if myPos and data.refs.root and CONFIG.ESP_RANGE > 0 then
-            local okRP, rootPos = pcall(function() return data.refs.root.Position end)
-            if okRP and rootPos and distanceSq(myPos, rootPos) > espRangeSq then
-                data.hpText.Visible = false
-                data.postureText.Visible = false
-                data.weaponText.Visible = false
-                continue
-            end
-        end
-        local ok, pos, onScreen = pcall(WorldToScreen, head.Position)
-        if not ok or not onScreen or not pos then
-            data.hpText.Visible = false
-            data.postureText.Visible = false
-            data.weaponText.Visible = false
-            continue
-        end
-        local health = getHealth(player)
-        local maxHealth = data.cachedMax or getMaxHealth(player)
-        if maxHealth and not data.cachedMax then data.cachedMax = maxHealth end
-        local posture = getPosture(player)
-        local hpPos = Vector2_new(pos.X, pos.Y - 28)
-        local ppPos = Vector2_new(pos.X, pos.Y - 16)
-        local wpPos = Vector2_new(pos.X, pos.Y - 4)
-        if health and maxHealth and maxHealth > 0 and health > 0 then
-            local pct = health / maxHealth
-            if pct > 1 then pct = 1 elseif pct < 0 then pct = 0 end
-            data.hpText.Text = tostring(math_floor(health))
-            data.hpText.Position = hpPos
-            data.hpText.Color = healthColor(pct)
-            data.hpText.Visible = true
+        if not d.head then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
+        if myPos and d.root and CONFIG.ESP_RANGE > 0 then local rp = getPos(d.root) if rp and dist2(myPos, rp) > rsq then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end end
+        local hp = getPos(d.head) if not hp then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
+        local ok, pos, onScreen = pcall(WorldToScreen, hp) if not ok or not onScreen or not pos then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
+        local h, mh = getHealth(p), d.maxCache or getMaxHealth(p) if mh and not d.maxCache then d.maxCache = mh end
+        local post = getPosture(p)
+        if h and mh and mh > 0 and h > 0 then
+            local pct = h / mh
+            pct = pct > 1 and 1 or pct < 0 and 0 or pct
+            d.hp.Text = tostring(floor(h))
+            d.hp.Position = V2(pos.X, pos.Y-28)
+            d.hp.Color = hColor(pct)
+            d.hp.Visible = true
         else
-            data.hpText.Visible = false
+            d.hp.Visible = false
         end
-        if posture ~= nil then
-            data.postureText.Text = tostring(math_floor(posture))
-            data.postureText.Position = ppPos
-            data.postureText.Visible = true
-        else
-            data.postureText.Visible = false
-        end
-        if CONFIG.ESP.Weapon then
-            if not data.cachedWeapon or (now - data.lastWeaponUpdate > 1) then
-                data.cachedWeapon = getWeaponName(player, char)
-                data.lastWeaponUpdate = now
-            end
-            data.weaponText.Text = data.cachedWeapon
-            data.weaponText.Position = wpPos
-            data.weaponText.Visible = true
-        else
-            data.weaponText.Visible = false
-        end
+        if post ~= nil then d.pp.Text = tostring(floor(post)) d.pp.Position = V2(pos.X, pos.Y-16) d.pp.Visible = true else d.pp.Visible = false end
+        if CONFIG.ESP.Weapon then if not d.wepCache or now - d.wepTime > 1 then d.wepCache = getWeapon(p, c) d.wepTime = now end d.wp.Text = d.wepCache d.wp.Position = V2(pos.X, pos.Y-4) d.wp.Visible = true else d.wp.Visible = false end
     end
 end
-local lastPlayerList = {}
-local function updatePlayerList()
-    if not STATE.espEnabled then return end
-    local lp = getLocalPlayer()
-    if not lp then return end
-    local ok, all = pcall(function() return game:GetService("Players"):GetPlayers() end)
-    if not ok or not all then return end
-    for _, p in ipairs(all) do
-        if p ~= lp and not isSelf(p) and not lastPlayerList[p] then
-            lastPlayerList[p] = true
-            createESP(p)
-        end
-    end
-    for p in next, lastPlayerList do
-        local here = false
-        for _, v in ipairs(all) do if v == p then here = true break end end
-        if not here then
-            lastPlayerList[p] = nil
-            removeESP(p)
-        end
-    end
+local function updatePlayers()
+    if not STATE.espOn then return end
+    local lp = getLP() if not lp then return end
+    local all = safe(function() return Players:GetPlayers() end) or {}
+    for _, p in ipairs(all) do if p ~= lp and not isSelf(p) and not STATE.players[p] then STATE.players[p] = true makeESP(p) end end
+    for p in next, STATE.players do local here = false for _, v in ipairs(all) do if v == p then here = true break end end if not here then STATE.players[p] = nil removeESP(p) end end
 end
-local running = true
 local function doCleanup()
-    running = false
-    STATE.enabled = false
-    STATE.currentTarget = nil
-    if espObjects then
-        for p, d in next, espObjects do
-            if d then
-                if d.hpText then
-                    pcall(function() d.hpText.Visible = false end)
-                    pcall(function() d.hpText:Remove() end)
-                end
-                if d.postureText then
-                    pcall(function() d.postureText.Visible = false end)
-                    pcall(function() d.postureText:Remove() end)
-                end
-                if d.weaponText then
-                    pcall(function() d.weaponText.Visible = false end)
-                    pcall(function() d.weaponText:Remove() end)
-                end
-            end
-        end
-    end
-    espObjects = {}
-    healthCache = {}
-    cachedTargets = {}
-    lastPlayerList = {}
-    STATE.hurtboxSeen = {}
-    STATE.entitiesFolder = nil
+    STATE.running = false STATE.enabled = false STATE.target = nil
+    for p, d in next, STATE.espObjs do if d then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end end end
+    STATE.espObjs = {} STATE.healthCache = {} STATE.cachedTargets = {} STATE.players = {} STATE.hurtboxSeen = {} STATE.entities = nil
 end
 _G.VaultCleanup = doCleanup
-local function isGameValid()
-    local ok, svc = pcall(function() return game:GetService("Players") end)
-    if not ok or not svc then return false end
-    local ok2, lp = pcall(function() return svc.LocalPlayer end)
-    if not ok2 or not lp then return false end
-    local ok3, pid = pcall(function() return game.PlaceId end)
-    return ok3 and pid ~= nil
-end
-local function onFrame()
-    if not running then return end
-    if not isGameValid() then doCleanup() return end
-    updateESP()
-end
-local function auraLoop()
-    while running do
-        if STATE.enabled then pcall(updateAura) end
-        task_wait(0.01)
+local function isValid() return Players and getLP() and safe(function() return game.PlaceId end) ~= nil end
+local function onKey(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode[CONFIG.TOGGLE_KEY:upper()] then
+        if STATE.debounce.toggle then return end STATE.debounce.toggle = true CONFIG.AUTO_ATTACK = not CONFIG.AUTO_ATTACK notify("Vault", "Auto Attack: " .. (CONFIG.AUTO_ATTACK and "ON" or "OFF"), 3) wait(0.3) STATE.debounce.toggle = false
+    end
+    if input.KeyCode == Enum.KeyCode[CONFIG.ESP_TOGGLE_KEY:upper()] then
+        if STATE.debounce.esp then return end STATE.debounce.esp = true STATE.espOn = not STATE.espOn
+        if not STATE.espOn then
+            for p, d in next, STATE.espObjs do if d then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end end end
+            STATE.espObjs = {} STATE.healthCache = {} STATE.cachedTargets = {} STATE.players = {} notify("Vault", "ESP: REMOVED", 3)
+        else notify("Vault", "ESP: ON", 3) end
+        wait(0.3) STATE.debounce.esp = false
+    end
+    if input.KeyCode == Enum.KeyCode[CONFIG.HITBOX_TOGGLE_KEY:upper()] then
+        if STATE.debounce.hitbox then return end STATE.debounce.hitbox = true STATE.hitboxLarge = not STATE.hitboxLarge
+        if STATE.hitboxLarge then CONFIG.HURTBOX_TARGET_SIZE = V3(25, 25, 25) notify("Vault", "Hitbox: LARGE", 3) else CONFIG.HURTBOX_TARGET_SIZE = V3(2.1, 2.1, 1.05) notify("Vault", "Hitbox: NORMAL", 3) end
+        STATE.hurtboxSeen = {} safe(scanHurtboxes) wait(0.3) STATE.debounce.hitbox = false
     end
 end
-local function playerPollLoop()
-    while running do
-        pcall(updatePlayerList)
-        task_wait(0.5)
-    end
+if UIS then UIS.InputBegan:Connect(onKey) end
+local function main()
+    STATE.enabled = true STATE.target = nil
+    local lp = nil for _ = 1, 100 do lp = getLP() if lp then break end wait(0.1) end if not lp then return end
+    for _, p in ipairs(safe(function() return Players:GetPlayers() end) or {}) do if p ~= lp and not isSelf(p) and STATE.espOn then makeESP(p) STATE.players[p] = true end end
+    if STATE.espObjs[lp] then removeESP(lp) end
+    local lastId = safe(function() return game.PlaceId end) or 0
+    spawn(function() while STATE.running do safe(updateESP) local s = tick() wait(0.008) if tick()-s > 0.05 then wait(0.001) end local cid = safe(function() return game.PlaceId end) if not cid or cid ~= lastId then doCleanup() break end if not safe(function() return Players.LocalPlayer end) then doCleanup() break end end end)
+    spawn(function() while STATE.running do if STATE.enabled then safe(updateAura) end wait(0.01) end end)
+    spawn(function() while STATE.running do safe(updatePlayers) wait(0.5) end end)
+    spawn(function() wait(1) while STATE.running do safe(scanHurtboxes) wait(CONFIG.HURTBOX_SCAN_INTERVAL) end end)
+    for _ = 1, 50 do if getMyPos() then break end wait(0.1) end
 end
-local function hurtboxLoop()
-    task_wait(1)
-    while running do
-        pcall(scanHurtboxes)
-        task_wait(CONFIG.HURTBOX_SCAN_INTERVAL)
-    end
-end
-local function espFrameLoop()
-    while running do
-        local start = tick()
-        pcall(onFrame)
-        local elapsed = tick() - start
-        local sleep = 0.008 - elapsed
-        if sleep > 0 then task_wait(sleep) end
-        local okP, curId = pcall(function() return game.PlaceId end)
-        local ok_pid, pid = pcall(function() return game.PlaceId end)
-        local lastPlaceId = ok_pid and pid or 0
-        if not okP or curId ~= lastPlaceId then doCleanup() break end
-        local okL, exists = pcall(function() return game:GetService("Players").LocalPlayer ~= nil end)
-        if not okL or not exists then doCleanup() break end
-    end
-end
-local function mainLoop()
-    STATE.enabled = true
-    STATE.currentTarget = nil
-    local lp = nil
-    for _ = 1, 100 do
-        lp = getLocalPlayer()
-        if lp then break end
-        task_wait(0.1)
-    end
-    if not lp then return end
-    local Players = game:GetService("Players")
-    local ok, all = pcall(function() return Players:GetPlayers() end)
-    if ok and all then
-        for _, p in ipairs(all) do
-            if p ~= lp and not isSelf(p) then
-                if STATE.espEnabled then
-                    createESP(p)
-                    lastPlayerList[p] = true
-                end
-            end
-        end
-    end
-    if espObjects[lp] then removeESP(lp) end
-    local ok_pid, pid = pcall(function() return game.PlaceId end)
-    local lastPlaceId = ok_pid and pid or 0
-    task_spawn(espFrameLoop)
-    task_spawn(auraLoop)
-    task_spawn(playerPollLoop)
-    task_spawn(hurtboxLoop)
-    for _ = 1, 50 do
-        local char = getMyPosition()
-        if char then break end
-        task_wait(0.1)
-    end
-end
-pcall(mainLoop)
-notify("Vault", "Cutie Patootie", 7)
+if isValid() then safe(main) notify("Vault", "Cutie Patootie", 7) end
