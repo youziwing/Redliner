@@ -28,7 +28,7 @@ local CONFIG = {
     PARRY_VERIFY_TARGET = true,
     TOGGLE_KEY = "r",
     ESP_TOGGLE_KEY = "p",
-    HITBOX_TOGGLE_KEY = "h", -- NEW: key to cycle hitbox size
+    HITBOX_TOGGLE_KEY = "h", 
     ESP = {
         Weapon = true,
     },
@@ -46,7 +46,7 @@ local STATE = {
     espEnabled = true,
     hurtboxSeen = {},
     entitiesFolder = nil,
-    hitboxLarge = true, -- NEW: true = 13,13,13 | false = 8,8,8
+    hitboxLarge = true, 
 }
 local BLOCKED_PATTERNS = {
     "emptydummy",
@@ -57,7 +57,7 @@ local BLOCKED_PATTERNS = {
 local UserInputService = game:GetService("UserInputService")
 local toggleDebounce = false
 local espToggleDebounce = false
-local hitboxToggleDebounce = false -- NEW: debounce for H key
+local hitboxToggleDebounce = false 
 local function onKeyPress(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode[CONFIG.TOGGLE_KEY:upper()] then
@@ -107,7 +107,7 @@ local function onKeyPress(input, gameProcessed)
         hitboxToggleDebounce = true
         STATE.hitboxLarge = not STATE.hitboxLarge
         if STATE.hitboxLarge then
-            CONFIG.HURTBOX_TARGET_SIZE = Vector3_new(13, 13, 13)
+            CONFIG.HURTBOX_TARGET_SIZE = Vector3_new(25, 25, 25)
             notify("Vault", "Hitbox: LARGE", 3)
         else
             CONFIG.HURTBOX_TARGET_SIZE = Vector3_new(2.1, 2.1, 1.05)
