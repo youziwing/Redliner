@@ -16,11 +16,11 @@ local Vector2_new = Vector2.new
 local Color3_fromRGB = Color3.fromRGB
 local Drawing_new = Drawing.new
 local CONFIG = {
-    AURA_RANGE = 30,
+    AURA_RANGE = 38,
     AURA_ANGLE = 180,
     AUTO_ATTACK = true,
     ATTACK_COOLDOWN = 0.15,
-    AURA_INTERVAL = 0.033,
+    AURA_INTERVAL = 0.020,
     PARRY_USE_PRESS_RELEASE = true,
     PARRY_DOUBLE_TAP = false,
     PARRY_DOUBLE_TAP_DELAY = 0.05,
@@ -33,7 +33,7 @@ local CONFIG = {
         Weapon = true,
     },
     ESP_RANGE = 300,
-    HURTBOX_TARGET_SIZE = Vector3_new(13, 13, 13),
+    HURTBOX_TARGET_SIZE = Vector3_new(25, 25, 25),
     HURTBOX_SCAN_INTERVAL = 5,
 }
 local KNOWN_WEAPONS = {"Castigate", "Phoenix", "Siege", "Monarch"}
@@ -665,7 +665,7 @@ local function espFrameLoop()
         local start = tick()
         pcall(onFrame)
         local elapsed = tick() - start
-        local sleep = 0.016 - elapsed
+        local sleep = 0.008 - elapsed
         if sleep > 0 then task_wait(sleep) end
         local okP, curId = pcall(function() return game.PlaceId end)
         local ok_pid, pid = pcall(function() return game.PlaceId end)
