@@ -2,7 +2,7 @@ local pcall, tick, wait, spawn = pcall, tick, task.wait, task.spawn
 local ipairs, next, tostring, floor, sqrt, huge, insert, lower, find, min, max = ipairs, next, tostring, math.floor, math.sqrt, math.huge, table.insert, string.lower, string.find, math.min, math.max
 local V3, V2, C3, Draw = Vector3.new, Vector2.new, Color3.fromRGB, Drawing.new
 local CONFIG = {
-    AURA_RANGE = 38, AURA_ANGLE = 180, AUTO_ATTACK = true, ATTACK_COOLDOWN = 0.15,
+    AURA_RANGE = 33, AURA_ANGLE = 180, AUTO_ATTACK = true, ATTACK_COOLDOWN = 0.15,
     AURA_INTERVAL = 0.020, PARRY_USE_PRESS_RELEASE = true, PARRY_DOUBLE_TAP = false,
     PARRY_DOUBLE_TAP_DELAY = 0.05, PARRY_REQUIRE_FOCUS = true, PARRY_VERIFY_TARGET = true,
     TOGGLE_KEY = "r", ESP_TOGGLE_KEY = "p", HITBOX_TOGGLE_KEY = "h",
