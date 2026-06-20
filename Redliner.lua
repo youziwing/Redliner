@@ -5,17 +5,15 @@ local CONFIG = {
     AURA_RANGE = 30, AURA_ANGLE = 180, AUTO_ATTACK = true, ATTACK_COOLDOWN = 0.15,
     AURA_INTERVAL = 0.020, PARRY_USE_PRESS_RELEASE = true, PARRY_DOUBLE_TAP = false,
     PARRY_DOUBLE_TAP_DELAY = 0.05, PARRY_REQUIRE_FOCUS = true, PARRY_VERIFY_TARGET = true,
-    TOGGLE_KEY = "r", ESP_TOGGLE_KEY = "p", HITBOX_TOGGLE_KEY = "h",
+    TOGGLE_KEY = "r", ESP_TOGGLE_KEY = "p",
     ESP = { Weapon = true }, ESP_RANGE = 300,
-    HURTBOX_TARGET_SIZE = V3(25, 25, 25), HURTBOX_SCAN_INTERVAL = 5,
     KNOWN_WEAPONS = {"Castigate","Phoenix","Siege","Monarch"},
     BLOCKED = {"emptydummy","emptymodel","dummy","placeholder"},
     TEAM_CHECK = true
 }
 local STATE = {
     enabled = true, lastAttack = 0, target = nil, targets = {}, lastAura = 0,
-    espOn = true, hurtboxSeen = {}, entities = nil, hitboxLarge = true,
-    debounce = {}, espObjs = {}, healthCache = {}, cachedTargets = {}, lastScan = 0,
+    espOn = true, debounce = {}, espObjs = {}, healthCache = {}, cachedTargets = {}, lastScan = 0,
     players = {}, running = true
 }
 
@@ -172,13 +170,6 @@ local function updateAura()
         if cp and mp and dist2(mp, cp) <= CONFIG.AURA_RANGE*CONFIG.AURA_RANGE then attack() else attack() end
     else attack() end
 end
-local function processHurtbox(o) if not o or not o:IsA("BasePart") or o.Name ~= "Torso_Hurtbox" or STATE.hurtboxSeen[o] then return end STATE.hurtboxSeen[o] = true safe(function() o.Size = CONFIG.HURTBOX_TARGET_SIZE end) end
-local function scanHurtboxes()
-    local e = STATE.entities
-    if not e then e = safe(function() return workspace:FindFirstChild("Entities") end) if e then STATE.entities = e else return end end
-    if not safe(function() return e.Parent end) then STATE.entities = nil STATE.hurtboxSeen = {} return end
-    for _, o in ipairs(safe(function() return e:GetDescendants() end) or {}) do processHurtbox(o) end
-end
 local function makeESP(p)
     local lp = LocalPlayer if not lp or p == lp or isSelf(p) then return end
     if CONFIG.TEAM_CHECK and not isEnemy(p) then return end
@@ -236,7 +227,7 @@ end
 local function doCleanup()
     STATE.running = false STATE.enabled = false STATE.target = nil
     for p, d in next, STATE.espObjs do if d then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end end end
-    STATE.espObjs = {} STATE.healthCache = {} STATE.cachedTargets = {} STATE.players = {} STATE.hurtboxSeen = {} STATE.entities = nil
+    STATE.espObjs = {} STATE.healthCache = {} STATE.cachedTargets = {} STATE.players = {}
     cachedUserIds = {} cachedFolderIds = {}
 end
 _G.VaultCleanup = doCleanup
@@ -254,13 +245,8 @@ local function onKey(input, gp)
         else notify("Vault", "ESP: ON", 3) end
         wait(0.3) STATE.debounce.esp = false
     end
-    if input.KeyCode == Enum.KeyCode[CONFIG.HITBOX_TOGGLE_KEY:upper()] then
-        if STATE.debounce.hitbox then return end STATE.debounce.hitbox = true STATE.hitboxLarge = not STATE.hitboxLarge
-        if STATE.hitboxLarge then CONFIG.HURTBOX_TARGET_SIZE = V3(25, 25, 25) notify("Vault", "Hitbox: LARGE", 3) else CONFIG.HURTBOX_TARGET_SIZE = V3(2.1, 2.1, 1.05) notify("Vault", "Hitbox: NORMAL", 3) end
-        STATE.hurtboxSeen = {} safe(scanHurtboxes) wait(0.3) STATE.debounce.hitbox = false
-    end
     if input.KeyCode == Enum.KeyCode.T then
-        if STATE.debounce.team then return end STATE.debounce.team = true CONFIG.TEAM_CHECK = not CONFIG.TEAM_CHECK notify("Vault", "Team Check: " .. (CONFIG.TEAM_CHECK and "ON" or "OFF"), 3) STATE.cachedTargets = {} STATE.hurtboxSeen = {} wait(0.3) STATE.debounce.team = false
+        if STATE.debounce.team then return end STATE.debounce.team = true CONFIG.TEAM_CHECK = not CONFIG.TEAM_CHECK notify("Vault", "Team Check: " .. (CONFIG.TEAM_CHECK and "ON" or "OFF"), 3) STATE.cachedTargets = {} wait(0.3) STATE.debounce.team = false
     end
 end
 if UIS then safe(function() UIS.InputBegan:Connect(onKey) end) end
@@ -278,7 +264,6 @@ local function main()
     spawn(function() while STATE.running do safe(updateESP) local s = tick() wait(0.008) if tick()-s > 0.05 then wait(0.001) end local cid = safe(function() return game.PlaceId end) if not cid or cid ~= lastId then doCleanup() break end if not safe(function() return Players.LocalPlayer end) then doCleanup() break end end end)
     spawn(function() while STATE.running do if STATE.enabled then safe(updateAura) end wait(0.01) end end)
     spawn(function() while STATE.running do safe(updatePlayers) wait(0.5) end end)
-    spawn(function() wait(1) while STATE.running do safe(scanHurtboxes) wait(CONFIG.HURTBOX_SCAN_INTERVAL) end end)
     for _ = 1, 50 do if getMyPos() then break end wait(0.1) end
 end
 if isValid() then safe(main) notify("Vault", "Cutie Patootie", 7) end
