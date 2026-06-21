@@ -338,7 +338,7 @@ local function onKey(input, gp)
         else notify("Vault", "ESP: ON", 3) end
         wait(0.3) STATE.debounce.esp = false
     end
-    if input.KeyCode == Enum.KeyCode.' then
+    if input.KeyCode == Enum.KeyCode."'" then
         if STATE.debounce.team then return end STATE.debounce.team = true CONFIG.TEAM_CHECK = not CONFIG.TEAM_CHECK notify("Vault", "Team Check: " .. (CONFIG.TEAM_CHECK and "ON" or "OFF"), 3) STATE.cachedTargets = {} wait(0.3) STATE.debounce.team = false
     end
 end
