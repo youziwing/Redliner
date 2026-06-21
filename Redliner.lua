@@ -17,7 +17,6 @@ local STATE = {
     players = {}, running = true
 }
 
--- === TEAM CHECK v4 ===
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
@@ -68,7 +67,6 @@ end
 local function isTeammate(p) return p == LocalPlayer or not isEnemy(p) end
 
 _G.TeamCheck = { isEnemy = isEnemy, isTeammate = isTeammate, getTeamId = function(p) return getTeamId(getRealUserId(p)) end, getRealUserId = getRealUserId }
--- === END TEAM CHECK ===
 
 local function safe(f, ...) local ok, r = pcall(f, ...) return ok and r or nil end
 local function notify(t, m, d) safe(function() (_G.notify or notify)(t, m, d) end) end
