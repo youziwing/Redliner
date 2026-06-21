@@ -6,7 +6,7 @@ local CONFIG = {
     AURA_INTERVAL = 0.020, PARRY_USE_PRESS_RELEASE = true, PARRY_DOUBLE_TAP = false,
     PARRY_DOUBLE_TAP_DELAY = 0.05, PARRY_REQUIRE_FOCUS = true, PARRY_VERIFY_TARGET = true,
     TOGGLE_KEY = "r", ESP_TOGGLE_KEY = "p",
-    ESP = { Weapon = true }, ESP_RANGE = 300,
+    ESP = { Weapon = true, Bullets = true }, ESP_RANGE = 300,
     KNOWN_WEAPONS = {"Castigate","Phoenix","Siege","Monarch"},
     BLOCKED = {"emptydummy","emptymodel","dummy","placeholder"},
     TEAM_CHECK = true
@@ -111,10 +111,89 @@ local function getPosture(p)
     for _, n in ipairs({"impact","Impact","posture","Posture","stun","Stun"}) do local v = safe(function() local o = ro:FindFirstChild(n) return o and o.Value end) if v ~= nil then return v end end
     return nil
 end
-local function getWeapon(p, c)
-    local function search(f) if not f then return nil end for _, ch in ipairs(safe(function() return f:GetChildren() end) or {}) do local n = safe(function() return ch.Name end) if n then local l = lower(n) for _, w in ipairs(CONFIG.KNOWN_WEAPONS) do if find(l, lower(w), 1, true) then return w end end end end return nil end
-    return search(c) or search(safe(function() return p:FindFirstChild("Backpack") end)) or "None"
+
+local WEAPON_BY_MAX_HEAT = {
+    [300] = "Castigate",
+    [280] = "Siege",
+    [170] = "Phoenix",
+    [200] = "Monarch",
+}
+
+local WEAPON_BY_HEAT_PER = {
+    [100] = "Castigate",
+    [140] = "Siege",
+    [170] = "Phoenix",
+    [200] = "Monarch",
+}
+
+local WEAPON_BULLET_DATA = {
+    Castigate = {max = 3, heatPer = 100},
+    Siege = {max = 2, heatPer = 140},
+    Phoenix = {max = 1, heatPer = 170},
+    Monarch = {max = 1, heatPer = 200},
+}
+
+local function getWeaponFromStats(p)
+    local ro = safe(function() return p:FindFirstChild("ReadOnly") end)
+    if not ro then return nil end
+    local maxHeat = safe(function() 
+        local h = ro:FindFirstChild("max_heat")
+        return h and h.Value
+    end)
+    if maxHeat and WEAPON_BY_MAX_HEAT[maxHeat] then
+        return WEAPON_BY_MAX_HEAT[maxHeat]
+    end
+    local heatPer = safe(function() 
+        local h = ro:FindFirstChild("heat_per_bullet")
+        return h and h.Value
+    end)
+    if heatPer and WEAPON_BY_HEAT_PER[heatPer] then
+        return WEAPON_BY_HEAT_PER[heatPer]
+    end
+    return nil
 end
+
+local function getWeaponFromModel(p)
+    local c = getChar(p)
+    local function search(f) 
+        if not f then return nil end 
+        for _, ch in ipairs(safe(function() return f:GetChildren() end) or {}) do 
+            local n = safe(function() return ch.Name end) 
+            if n then 
+                local l = lower(n)
+                for _, w in ipairs(CONFIG.KNOWN_WEAPONS) do 
+                    if find(l, lower(w), 1, true) then return w end 
+                end 
+            end 
+        end 
+        return nil 
+    end
+    return search(c) or search(safe(function() return p:FindFirstChild("Backpack") end))
+end
+
+local function getWeaponFromHeat(p)
+    local fromStats = getWeaponFromStats(p)
+    if fromStats then return fromStats end
+    local fromModel = getWeaponFromModel(p)
+    if fromModel then return fromModel end
+    return "None"
+end
+
+local function getBullets(p)
+    local ro = safe(function() return p:FindFirstChild("ReadOnly") end)
+    if not ro then return nil end
+    local heat = safe(function() local h = ro:FindFirstChild("heat") return h and h.Value end)
+    local heatPer = safe(function() local h = ro:FindFirstChild("heat_per_bullet") return h and h.Value end)
+    if not heat or not heatPer or heatPer <= 0 then return nil end
+    local current = floor(heat / heatPer)
+    local wep = getWeaponFromHeat(p)
+    local data = WEAPON_BULLET_DATA[wep]
+    if data then
+        return min(current, data.max), data.max
+    end
+    return min(current, 3), 3
+end
+
 local function scanTargets()
     local t, myPos = {}, getMyPos() if not myPos then return t end
     local lp, rsq = LocalPlayer, CONFIG.AURA_RANGE*CONFIG.AURA_RANGE
@@ -173,13 +252,13 @@ local function makeESP(p)
     if CONFIG.TEAM_CHECK and not isEnemy(p) then return end
     local n = safe(function() return p.Name end) if not n or blocked(n) or STATE.espObjs[p] then return end
     local function txt() local t = Draw("Text") t.Size = 13 t.Font = Drawing.Fonts.System t.Outline = true t.Center = true t.Visible = false t.ZIndex = 3 return t end
-    local hp, pp, wp = txt(), txt(), txt()
-    pp.Color = C3(80, 150, 255) wp.Color = C3(255, 180, 100)
-    STATE.espObjs[p] = {hp = hp, pp = pp, wp = wp, lastChar = nil, maxCache = nil, wepCache = nil, wepTime = 0, head = nil, root = nil}
+    local hp, pp, wp, bp = txt(), txt(), txt(), txt()
+    pp.Color = C3(80, 150, 255) wp.Color = C3(255, 180, 100) bp.Color = C3(255, 80, 80)
+    STATE.espObjs[p] = {hp = hp, pp = pp, wp = wp, bp = bp, lastChar = nil, maxCache = nil, wepCache = nil, wepTime = 0, bulletCache = nil, bulletTime = 0, head = nil, root = nil}
 end
 local function removeESP(p)
     local d = STATE.espObjs[p] if not d then return end
-    for _, k in ipairs({"hp","pp","wp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end
+    for _, k in ipairs({"hp","pp","wp","bp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end
     STATE.espObjs[p] = nil STATE.healthCache[p] = nil
 end
 local function updateESP()
@@ -188,17 +267,17 @@ local function updateESP()
     local rsq = CONFIG.ESP_RANGE * CONFIG.ESP_RANGE
     local now = tick()
     for p, d in next, STATE.espObjs do
-        if p == lp or isSelf(p) then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
-        if CONFIG.TEAM_CHECK and not isEnemy(p) then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
+        if p == lp or isSelf(p) then for _, k in ipairs({"hp","pp","wp","bp"}) do if d[k] then d[k].Visible = false end end continue end
+        if CONFIG.TEAM_CHECK and not isEnemy(p) then for _, k in ipairs({"hp","pp","wp","bp"}) do if d[k] then d[k].Visible = false end end continue end
         local c = getChar(p)
         if c ~= d.lastChar then
-            d.lastChar = c d.maxCache = nil d.wepCache = nil d.wepTime = 0
+            d.lastChar = c d.maxCache = nil d.wepCache = nil d.wepTime = 0 d.bulletCache = nil d.bulletTime = 0
             d.head = c and getPart(c, "Head") d.root = c and getPart(c, "HumanoidRootPart")
         end
-        if not d.head then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
-        if myPos and d.root and CONFIG.ESP_RANGE > 0 then local rp = getPos(d.root) if rp and dist2(myPos, rp) > rsq then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end end
-        local hp = getPos(d.head) if not hp then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
-        local ok, pos, onScreen = pcall(WorldToScreen, hp) if not ok or not onScreen or not pos then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then d[k].Visible = false end end continue end
+        if not d.head then for _, k in ipairs({"hp","pp","wp","bp"}) do if d[k] then d[k].Visible = false end end continue end
+        if myPos and d.root and CONFIG.ESP_RANGE > 0 then local rp = getPos(d.root) if rp and dist2(myPos, rp) > rsq then for _, k in ipairs({"hp","pp","wp","bp"}) do if d[k] then d[k].Visible = false end end continue end end
+        local hp = getPos(d.head) if not hp then for _, k in ipairs({"hp","pp","wp","bp"}) do if d[k] then d[k].Visible = false end end continue end
+        local ok, pos, onScreen = pcall(WorldToScreen, hp) if not ok or not onScreen or not pos then for _, k in ipairs({"hp","pp","wp","bp"}) do if d[k] then d[k].Visible = false end end continue end
         local h, mh = getHealth(p), d.maxCache or getMaxHealth(p) if mh and not d.maxCache then d.maxCache = mh end
         local post = getPosture(p)
         if h and mh and mh > 0 and h > 0 then
@@ -212,7 +291,23 @@ local function updateESP()
             d.hp.Visible = false
         end
         if post ~= nil then d.pp.Text = tostring(floor(post)) d.pp.Position = V2(pos.X, pos.Y-16) d.pp.Visible = true else d.pp.Visible = false end
-        if CONFIG.ESP.Weapon then if not d.wepCache or now - d.wepTime > 1 then d.wepCache = getWeapon(p, c) d.wepTime = now end d.wp.Text = d.wepCache d.wp.Position = V2(pos.X, pos.Y-4) d.wp.Visible = true else d.wp.Visible = false end
+        if CONFIG.ESP.Weapon then if not d.wepCache or now - d.wepTime > 1 then d.wepCache = getWeaponFromHeat(p) d.wepTime = now end d.wp.Text = d.wepCache d.wp.Position = V2(pos.X, pos.Y+20) d.wp.Visible = true else d.wp.Visible = false end
+        if CONFIG.ESP.Bullets then
+            if not d.bulletCache or now - d.bulletTime > 0.5 then
+                local b, m = getBullets(p)
+                d.bulletCache = {b, m}
+                d.bulletTime = now
+            end
+            if d.bulletCache[1] ~= nil then
+                d.bp.Text = tostring(d.bulletCache[1]) .. "/" .. tostring(d.bulletCache[2] or "?") .. " B"
+                d.bp.Position = V2(pos.X+35, pos.Y-4)
+                d.bp.Visible = true
+            else
+                d.bp.Visible = false
+            end
+        else
+            d.bp.Visible = false
+        end
     end
 end
 local function updatePlayers()
@@ -224,7 +319,7 @@ local function updatePlayers()
 end
 local function doCleanup()
     STATE.running = false STATE.enabled = false STATE.target = nil
-    for p, d in next, STATE.espObjs do if d then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end end end
+    for p, d in next, STATE.espObjs do if d then for _, k in ipairs({"hp","pp","wp","bp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end end end
     STATE.espObjs = {} STATE.healthCache = {} STATE.cachedTargets = {} STATE.players = {}
     cachedUserIds = {} cachedFolderIds = {}
 end
@@ -238,7 +333,7 @@ local function onKey(input, gp)
     if input.KeyCode == Enum.KeyCode[CONFIG.ESP_TOGGLE_KEY:upper()] then
         if STATE.debounce.esp then return end STATE.debounce.esp = true STATE.espOn = not STATE.espOn
         if not STATE.espOn then
-            for p, d in next, STATE.espObjs do if d then for _, k in ipairs({"hp","pp","wp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end end end
+            for p, d in next, STATE.espObjs do if d then for _, k in ipairs({"hp","pp","wp","bp"}) do if d[k] then safe(function() d[k].Visible = false end) safe(function() d[k]:Remove() end) end end end end
             STATE.espObjs = {} STATE.healthCache = {} STATE.cachedTargets = {} STATE.players = {} notify("Vault", "ESP: REMOVED", 3)
         else notify("Vault", "ESP: ON", 3) end
         wait(0.3) STATE.debounce.esp = false
