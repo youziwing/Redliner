@@ -114,7 +114,21 @@ local function getPosture(p)
     return nil
 end
 
--- === BULLET TRACKER ===
+-- === WEAPON & BULLET TRACKER ===
+local WEAPON_BY_MAX_HEAT = {
+    [300] = "Castigate",
+    [280] = "Siege",
+    [170] = "Phoenix",
+    [200] = "Monarch",
+}
+
+local WEAPON_BY_HEAT_PER = {
+    [100] = "Castigate",
+    [140] = "Siege",
+    [170] = "Phoenix",
+    [200] = "Monarch",
+}
+
 local WEAPON_BULLET_DATA = {
     Castigate = {max = 3, heatPer = 100},
     Siege = {max = 2, heatPer = 140},
@@ -122,9 +136,50 @@ local WEAPON_BULLET_DATA = {
     Monarch = {max = 1, heatPer = 200},
 }
 
-local function getWeapon(p, c)
-    local function search(f) if not f then return nil end for _, ch in ipairs(safe(function() return f:GetChildren() end) or {}) do local n = safe(function() return ch.Name end) if n then local l = lower(n) for _, w in ipairs(CONFIG.KNOWN_WEAPONS) do if find(l, lower(w), 1, true) then return w end end end end return nil end
-    return search(c) or search(safe(function() return p:FindFirstChild("Backpack") end)) or "None"
+local function getWeaponFromStats(p)
+    local ro = safe(function() return p:FindFirstChild("ReadOnly") end)
+    if not ro then return nil end
+    local maxHeat = safe(function() 
+        local h = ro:FindFirstChild("max_heat")
+        return h and h.Value
+    end)
+    if maxHeat and WEAPON_BY_MAX_HEAT[maxHeat] then
+        return WEAPON_BY_MAX_HEAT[maxHeat]
+    end
+    local heatPer = safe(function() 
+        local h = ro:FindFirstChild("heat_per_bullet")
+        return h and h.Value
+    end)
+    if heatPer and WEAPON_BY_HEAT_PER[heatPer] then
+        return WEAPON_BY_HEAT_PER[heatPer]
+    end
+    return nil
+end
+
+local function getWeaponFromModel(p)
+    local c = getChar(p)
+    local function search(f) 
+        if not f then return nil end 
+        for _, ch in ipairs(safe(function() return f:GetChildren() end) or {}) do 
+            local n = safe(function() return ch.Name end) 
+            if n then 
+                local l = lower(n)
+                for _, w in ipairs(CONFIG.KNOWN_WEAPONS) do 
+                    if find(l, lower(w), 1, true) then return w end 
+                end 
+            end 
+        end 
+        return nil 
+    end
+    return search(c) or search(safe(function() return p:FindFirstChild("Backpack") end))
+end
+
+local function getWeaponFromHeat(p)
+    local fromStats = getWeaponFromStats(p)
+    if fromStats then return fromStats end
+    local fromModel = getWeaponFromModel(p)
+    if fromModel then return fromModel end
+    return "None"
 end
 
 local function getBullets(p)
@@ -134,15 +189,14 @@ local function getBullets(p)
     local heatPer = safe(function() local h = ro:FindFirstChild("heat_per_bullet") return h and h.Value end)
     if not heat or not heatPer or heatPer <= 0 then return nil end
     local current = floor(heat / heatPer)
-    local c = getChar(p)
-    local wep = getWeapon(p, c)
+    local wep = getWeaponFromHeat(p)
     local data = WEAPON_BULLET_DATA[wep]
     if data then
         return min(current, data.max), data.max
     end
     return min(current, 3), 3
 end
--- === END BULLET TRACKER ===
+-- === END WEAPON & BULLET TRACKER ===
 
 local function scanTargets()
     local t, myPos = {}, getMyPos() if not myPos then return t end
@@ -241,7 +295,9 @@ local function updateESP()
             d.hp.Visible = false
         end
         if post ~= nil then d.pp.Text = tostring(floor(post)) d.pp.Position = V2(pos.X, pos.Y-16) d.pp.Visible = true else d.pp.Visible = false end
-        if CONFIG.ESP.Weapon then if not d.wepCache or now - d.wepTime > 1 then d.wepCache = getWeapon(p, c) d.wepTime = now end d.wp.Text = d.wepCache d.wp.Position = V2(pos.X, pos.Y-4) d.wp.Visible = true else d.wp.Visible = false end
+        -- Weapon at bottom (below posture)
+        if CONFIG.ESP.Weapon then if not d.wepCache or now - d.wepTime > 1 then d.wepCache = getWeaponFromHeat(p) d.wepTime = now end d.wp.Text = d.wepCache d.wp.Position = V2(pos.X, pos.Y+20) d.wp.Visible = true else d.wp.Visible = false end
+        -- Bullets on right side of character
         if CONFIG.ESP.Bullets then
             if not d.bulletCache or now - d.bulletTime > 0.5 then
                 local b, m = getBullets(p)
@@ -250,7 +306,7 @@ local function updateESP()
             end
             if d.bulletCache[1] ~= nil then
                 d.bp.Text = tostring(d.bulletCache[1]) .. "/" .. tostring(d.bulletCache[2] or "?") .. " B"
-                d.bp.Position = V2(pos.X, pos.Y+8)
+                d.bp.Position = V2(pos.X+35, pos.Y-4)
                 d.bp.Visible = true
             else
                 d.bp.Visible = false
