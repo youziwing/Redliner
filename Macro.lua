@@ -1,6 +1,4 @@
-local _ENV = getfenv()
-
-local keybind_macrospeed = _ENV.MacroKeybind or "R"
+local keybind_macrospeed = MacroKeybind or "R"
 
 local keys = {}
 keys.leftshift = 0x10
@@ -14,24 +12,24 @@ local function performSpeedMacro()
 	if macrodb then return end
 	macrodb = true
 	
-	_ENV.keyrelease(keys.w)
-	_ENV.keypress(keys.s)
+	keyrelease(keys.w)
+	keypress(keys.s)
 	task.wait(0.02)
 
-	_ENV.keypress(keys.leftshift)
+	keypress(keys.leftshift)
 	task.wait(0.01)
-	_ENV.keypress(keys.spacebar)
-	_ENV.mouse2press()
-	_ENV.keyrelease(keys.s)
+	keypress(keys.spacebar)
+	mouse2press()
+	keyrelease(keys.s)
 	task.wait(0.05)
 
-	_ENV.keyrelease(keys.leftshift)
-	_ENV.mouse2press()
+	keyrelease(keys.leftshift)
+	mouse2press()
 
 	task.wait(0.05)
 	task.wait(0.05)
-	_ENV.mouse2release()
-	_ENV.keypress(keys.w)
+	mouse2release()
+	keypress(keys.w)
 	task.wait(0.1)
 
 	macrodb = false
