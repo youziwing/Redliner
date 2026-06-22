@@ -1,99 +1,45 @@
 local _ENV = getfenv()
 
-local Players = _ENV.game:GetService("Players")
-local UIS = _ENV.game:GetService("UserInputService")
-local RunSvc = _ENV.game:GetService("RunService")
+local keybind_macrospeed = _ENV.MacroKeybind or "R"
 
-local LocalPlayer = Players.LocalPlayer
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local keys = {}
+keys.leftshift = 0x10
+keys.s = 0x53
+keys.spacebar = 0x20
+keys.w = 0x57
 
-local Settings = {
-    Enabled = false,
-    Keybind = _ENV.MacroKeybind or _ENV.Enum.KeyCode.X,
-    Cooldown = 0.12,
-    DebounceTime = 0.15
-}
+local macrodb = false
 
-local States = {
-    OnCooldown = false,
-    IsRunning = false
-}
+local function performSpeedMacro()
+	if macrodb then return end
+	macrodb = true
+	
+	_ENV.keyrelease(keys.w)
+	_ENV.keypress(keys.s)
+	task.wait(0.02)
 
-UIS.InputBegan:Connect(function(Input, Chatting)
-    if Chatting then return end
-    if Input.KeyCode ~= Settings.Keybind then return end
-    
-    Settings.Enabled = not Settings.Enabled
-    
-    local Status = Settings.Enabled and "ACTIVE" or "DISABLED"
-    print(string.format("[Macro] Speed boost %s", Status))
-end)
+	_ENV.keypress(keys.leftshift)
+	task.wait(0.01)
+	_ENV.keypress(keys.spacebar)
+	_ENV.mouse2press()
+	_ENV.keyrelease(keys.s)
+	task.wait(0.05)
 
-local function Press(Key)
-    _ENV.keypress(Key)
+	_ENV.keyrelease(keys.leftshift)
+	_ENV.mouse2press()
+
+	task.wait(0.05)
+	task.wait(0.05)
+	_ENV.mouse2release()
+	_ENV.keypress(keys.w)
+	task.wait(0.1)
+
+	macrodb = false
 end
 
-local function Release(Key)
-    _ENV.keyrelease(Key)
-end
-
-local function Hold(Duration, ...)
-    local Keys = {...}
-    for _, K in ipairs(Keys) do
-        Press(K)
-    end
-    task.wait(Duration)
-    for _, K in ipairs(Keys) do
-        Release(K)
-    end
-end
-
-local function Click()
-    _ENV.mouse2press()
-    task.wait()
-    _ENV.mouse2release()
-end
-
-local function ExecuteSequence()
-    if States.OnCooldown or States.IsRunning then return end
-    if not Settings.Enabled then return end
-    
-    States.IsRunning = true
-    States.OnCooldown = true
-    
-    Release(_ENV.keys.w)
-    Hold(0.02, _ENV.keys.s)
-    
-    Press(_ENV.keys.leftshift)
-    task.wait(0.01)
-    
-    Press(_ENV.keys.spacebar)
-    Click()
-    Release(_ENV.keys.s)
-    task.wait(0.05)
-    
-    Release(_ENV.keys.leftshift)
-    Click()
-    task.wait(0.1)
-    
-    Press(_ENV.keys.w)
-    task.wait(Settings.Cooldown)
-    
-    States.IsRunning = false
-    
-    task.delay(Settings.DebounceTime, function()
-        States.OnCooldown = false
-    end)
-end
-
-RunSvc.Heartbeat:Connect(function()
-    if not Settings.Enabled then return end
-    ExecuteSequence()
-end)
-
-LocalPlayer.CharacterAdded:Connect(function(NewChar)
-    Character = NewChar
-    States.OnCooldown = false
-    States.IsRunning = false
-    Settings.Enabled = false
+game:GetService("UserInputService").InputBegan:Connect(function(inp, gps)
+	if gps then return end
+	if inp.KeyCode == Enum.KeyCode[keybind_macrospeed] then
+		performSpeedMacro()
+	end
 end)
