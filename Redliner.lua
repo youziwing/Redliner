@@ -5,7 +5,7 @@ local CONFIG = {
     AURA_RANGE = 30, AURA_ANGLE = 180, AUTO_ATTACK = true, ATTACK_COOLDOWN = 0.15,
     AURA_INTERVAL = 0.020, PARRY_USE_PRESS_RELEASE = true, PARRY_DOUBLE_TAP = false,
     PARRY_DOUBLE_TAP_DELAY = 0.05, PARRY_REQUIRE_FOCUS = true, PARRY_VERIFY_TARGET = true,
-    TOGGLE_KEY = "r", ESP_TOGGLE_KEY = "p",
+    TOGGLE_KEY = "g", ESP_TOGGLE_KEY = "p",
     ESP = { Weapon = true, Bullets = true }, ESP_RANGE = 300,
     KNOWN_WEAPONS = {"Castigate","Phoenix","Siege","Monarch"},
     BLOCKED = {"emptydummy","emptymodel","dummy","placeholder"},
