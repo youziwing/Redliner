@@ -2,3 +2,4 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/youziwing/Redliner/re
 loadstring(game:HttpGet("https://raw.githubusercontent.com/youziwing/Redliner/refs/heads/main/AutoParry.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/youziwing/Redliner/refs/heads/main/Hitbox.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/youziwing/Redliner/refs/heads/main/Macro.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/youziwing/Redliner/refs/heads/main/ModChecker.lua"))()
