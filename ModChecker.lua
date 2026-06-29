@@ -1,48 +1,72 @@
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
--- redliner mods
-local STAFF_IDS = {
-    [833111475]  = true,
-    [465617580]  = true,
-    [12946313]   = true,
-    [423972562]  = true,
-    [86930434]   = true,
-    [919857618]  = true,
-    [907424331]  = true,
-    [3554368424] = true,
-    [3901099809] = true,
-    [151047265]  = true,
-    [10414427598]= true,
-    [34772947]   = true,
-    [75119385]   = true,
-    [1527191625] = true,
-    [199337439]  = true,
-    [72929869]   = true,
+local STAFF_USERNAMES = {
+    ["cubxfy"] = true,
+    ["smiibs"] = true,
+    ["rematchin"] = true,
+    ["xxlightfox420xx"] = true,
+    ["jarnemans"] = true,
+    ["expert_zerby"] = true,
+    ["pear4357"] = true,
+    ["sshanzyo"] = true,
+    ["misakinzx"] = true,
+    ["fwswtr"] = true,
+    ["scaredofscaryclowns"] = true,
+    ["asciimynetzach"] = true,
+    ["luy45"] = true,
+    ["luckymstr"] = true,
+    ["dere1235"] = true,
 }
 
-local function alertStaffDetected(player)
-    local userId = player.UserId
-    local name = player.Name
-    local displayName = player.DisplayName
+local alerted = {}
 
-    warn(string.format(
-        "Mod In Game | %s (@%s) | UserId: %d",
-        displayName,
-        name,
-        userId
-    ))
+local function alertStaff(player)
+    local name = player.Name or "Unknown"
+    local display = player.DisplayName or name
+    local msg = string.format("%s (@%s)", display, name)
+    warn("[Mod] " .. msg)
+    notify("Staff Detected", msg, 7)
 end
 
-local function checkPlayer(player)
-    if STAFF_IDS[player.UserId] then
-        alertStaffDetected(player)
+local function isStaff(player)
+    if not player then return false end
+    local name = player.Name
+    if not name then return false end
+    return STAFF_USERNAMES[string.lower(name)] == true
+end
+
+local function processPlayer(player)
+    if not player or not player.Name then return end
+    local key = string.lower(player.Name)
+    if alerted[key] then return end
+    alerted[key] = true
+    if isStaff(player) then
+        alertStaff(player)
     end
 end
 
-Players.PlayerAdded:Connect(checkPlayer)
-
-for _, player in ipairs(Players:GetPlayers()) do
-    checkPlayer(player)
+local function scanAllPlayers()
+    local list = Players:GetPlayers()
+    if not list then return end
+    for _, player in ipairs(list) do
+        processPlayer(player)
+    end
 end
 
-print("Slayyy" .. tostring(#STAFF_IDS) .. " IDs.")
+RunService.Heartbeat:Connect(function()
+    local list = Players:GetPlayers()
+    if not list then return end
+    for _, player in ipairs(list) do
+        processPlayer(player)
+    end
+end)
+
+pcall(function()
+    if Players.PlayerAdded then
+        Players.PlayerAdded:Connect(processPlayer)
+    end
+end)
+
+print("Slayyyy")
+scanAllPlayers()
