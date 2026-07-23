@@ -1,18 +1,13 @@
--- Matcha LuaVM Speed Macro
--- Uses polling loop with iskeypressed() since Matcha has no UserInputService
-
 local keybind_macrospeed = MacroKeybind or "R"
 
--- Windows Virtual Key Codes (Matcha uses these, not strings)
 local VK = {
-    LSHIFT = 0x10,      -- Left Shift
-    S = 0x53,           -- S key
-    SPACE = 0x20,       -- Spacebar
-    W = 0x57,           -- W key
-    R = 0x52,           -- R key (default bind)
+    LSHIFT = 0x10,
+    S = 0x53,
+    SPACE = 0x20,
+    W = 0x57,
+    R = 0x52,
 }
 
--- Get the VK code for the keybind
 local function getVK(key)
     return VK[key:upper()] or VK.R
 end
@@ -50,8 +45,6 @@ local function performSpeedMacro()
 
     macrodb = false
 end
-
-print("Speed macro loaded. Press", keybind_macrospeed, "to activate.")
 
 while true do
     if isrbxactive() then
